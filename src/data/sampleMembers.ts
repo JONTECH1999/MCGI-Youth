@@ -241,7 +241,7 @@ export const INITIAL_MEMBERS: Member[] = [
     attendancePercentage: 6.5,
     activityStatus: 'Inactive',
     activityReason: 'Relocated out of province without transfer notice; contact unreachable.',
-    notes: 'Listed under Missing Members for district search.',
+    notes: 'Listed under Missing Members for locale follow-up.',
     createdAt: '2022-11-05T09:00:00Z',
     updatedAt: '2025-12-10T12:00:00Z',
   },

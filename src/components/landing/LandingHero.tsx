@@ -93,7 +93,7 @@ export const LandingHero: React.FC<LandingHeroProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-amber-500/15 border border-amber-400/30 backdrop-blur-xs text-amber-300 text-xs font-bold tracking-wider uppercase shadow-2xs hover:bg-amber-500/25 transition">
                 <Sparkles className="w-3.5 h-3.5 text-amber-300 animate-spin" style={{ animationDuration: '8s' }} />
-                <span>{chapterName || 'CAMANAVA / NCR DISTRICT 1'}</span>
+                <span>{chapterName || 'MCGI YOUTH • LOCAL OF ASCOVILLE'}</span>
               </div>
 
               <div className="inline-flex items-center space-x-1.5 px-3 py-1 rounded-full bg-stone-900/80 border border-stone-700/60 text-stone-300 text-[11px] font-medium backdrop-blur-xs">

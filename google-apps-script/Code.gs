@@ -39,7 +39,8 @@ var SHEETS = {
   ACTIVITY_LOG: 'ACTIVITY_LOG',
   MEMBER_STATUS_HISTORY: 'MEMBER_STATUS_HISTORY',
   ANNOUNCEMENTS: 'ANNOUNCEMENTS',
-  LANDING_PAGE: 'LANDING_PAGE'
+  LANDING_PAGE: 'LANDING_PAGE',
+  OFFICIAL_SUMMARY: 'OFFICIAL_SUMMARY'
 };
 
 /**
@@ -160,6 +161,14 @@ function doPost(e) {
 
       case 'saveReportSnapshot':
         result = saveReportSnapshot(data);
+        break;
+
+      case 'saveOfficialSummary':
+        result = saveOfficialSummary(data);
+        break;
+
+      case 'pushAllData':
+        result = handlePushAllData(data);
         break;
 
       default:
@@ -609,6 +618,162 @@ function saveReportSnapshot(report) {
 }
 
 /**
+ * Save Official MCGI Youth Membership Statistics & Demographics Summary Table
+ */
+function saveOfficialSummary(data) {
+  var sheet = getOrCreateSheet(SHEETS.OFFICIAL_SUMMARY);
+  sheet.clear();
+
+  // Row 1: Grand Categories
+  var row1 = [];
+  for (var i = 0; i < 20; i++) row1.push('MEMBERSHIP STATISTICS');
+  for (var j = 0; j < 28; j++) row1.push('DEMOGRAPHICS');
+
+  // Row 2: Major Section Groupings
+  var row2 = [
+    '(AUTO) NUMBER OF REGISTERED MEMBERS',
+    'ACTIVE MEMBERS', '', '',
+    'ON & OFF', '', '',
+    'INACTIVE MEMBERS', '', '',
+    'SUSPENDED', '', '', '',
+    'BILANG NG NAPATAWAD',
+    'MISSING',
+    'NBB Youth - 2nd Quarter', '', '', '',
+    'WITH COMMITTEE', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '',
+    'WITHOUT COMMITTEE',
+    'TOTAL NUMBER OF STUDENTS',
+    'TOTAL NUMBER OF YOUTH MEMBERS WITH WORK',
+    'TOTAL NUMBER OF REGISTERED VOTERS (18 YEARS & ABOVE)',
+    'TOTAL NUMBER OF WORKING STUDENTS',
+    'TOTAL NUMBER OF OUT OF SCHOOL YOUTH',
+    'NUMBER OF YOUTH WITH BAPTIZED PARENT/S', '', '',
+    'TOTAL NUMBER OF MCGI YOUTH WITH UNBAPTIZED PARENT/S'
+  ];
+
+  // Row 3: Sub-Headers / Column Titles
+  var row3 = [
+    '(AUTO) NUMBER OF REGISTERED MEMBERS',
+    '(AUTO) TOTAL ACTIVE MEMBERS (JUNIOR + SENIOR)',
+    'JUNIOR (14 TO 24 YEARS OLD)',
+    'SENIOR (25 YEARS OLD & ABOVE)',
+    '(AUTO) TOTAL ON & OFF MEMBERS (JUNIOR + SENIOR)',
+    'JUNIOR (14 TO 24 YEARS OLD)',
+    'SENIOR (25 YEARS OLD & ABOVE)',
+    '(AUTO) TOTAL INACTIVE MEMBERS (JUNIOR + SENIOR)',
+    'JUNIOR (14 TO 24 YEARS OLD)',
+    'SENIOR (25 YEARS OLD & ABOVE)',
+    '(AUTO) TOTAL SUSPENDED MEMBERS (ACTIVE + ON & OFF + INACTIVE/RFA)',
+    'ACTIVE SUSPENDED',
+    'ON & OFF SUSPENDED',
+    'INACTIVE / RFA',
+    'BILANG NG NAPATAWAD',
+    'MISSING',
+    '(AUTO) OVERALL TOTAL',
+    'JUNE',
+    'JULY',
+    'AUGUST',
+    '(AUTO) OVERALL TOTAL',
+    'MULTIPLE COMMITTEE',
+    'ARTIST GUILD',
+    'BROADCAST',
+    'CORE GROUP',
+    'MCGI DRRT',
+    'GUEST COORDINATORS',
+    'LKD',
+    'MCGI BIBLE READERS',
+    'MUSIC MINISTRY',
+    'NAR',
+    'OFFICERS (YOUTH, GS, LOCALE/DISTRICT)',
+    'PHOTOVILLE',
+    'RACS',
+    'SERVANTS MINISTRY',
+    'TEATRO KRISTIANO',
+    'T.O.C. (THANKSGIVING COMMITTEE)',
+    'OTHERS',
+    'WITHOUT COMMITTEE',
+    'TOTAL NUMBER OF STUDENTS',
+    'TOTAL NUMBER OF YOUTH MEMBERS WITH WORK',
+    'TOTAL NUMBER OF REGISTERED VOTERS (18 YEARS & ABOVE)',
+    'TOTAL NUMBER OF WORKING STUDENTS',
+    'TOTAL NUMBER OF OUT OF SCHOOL YOUTH',
+    'MOTHER ONLY',
+    'FATHER ONLY',
+    'BOTH MOTHER & FATHER',
+    'TOTAL NUMBER OF MCGI YOUTH WITH UNBAPTIZED PARENT/S'
+  ];
+
+  // Row 4: Values (Either passed in data or live Google Sheet formulas)
+  var row4 = data && data.values && data.values.length === 48 ? data.values : [
+    '=COUNTA(MEMBERS!A2:A)',
+    '=C4+D4',
+    '=COUNTIFS(MEMBERS!L2:L, "Active", MEMBERS!G2:G, ">=14", MEMBERS!G2:G, "<=24")',
+    '=COUNTIFS(MEMBERS!L2:L, "Active", MEMBERS!G2:G, ">=25")',
+    '=F4+G4',
+    '=COUNTIFS(MEMBERS!L2:L, "On & Off", MEMBERS!G2:G, ">=14", MEMBERS!G2:G, "<=24")',
+    '=COUNTIFS(MEMBERS!L2:L, "On & Off", MEMBERS!G2:G, ">=25")',
+    '=I4+J4',
+    '=COUNTIFS(MEMBERS!L2:L, "Inactive", MEMBERS!G2:G, ">=14", MEMBERS!G2:G, "<=24")',
+    '=COUNTIFS(MEMBERS!L2:L, "Inactive", MEMBERS!G2:G, ">=25")',
+    '=L4+M4+N4',
+    '=COUNTIFS(MEMBERS!L2:L, "Suspended", MEMBERS!Y2:Y, "Active")',
+    '=COUNTIFS(MEMBERS!L2:L, "Suspended", MEMBERS!Y2:Y, "At Risk")',
+    '=COUNTIFS(MEMBERS!L2:L, "Suspended", MEMBERS!Y2:Y, "Inactive")',
+    '=COUNTIF(MEMBERS!AA2:AA, "*Napatawad*")',
+    '=COUNTIF(MEMBERS!L2:L, "Missing")',
+    '=R4+S4+T4',
+    '=COUNTIFS(MEMBERS!AA2:AA, "*June*")',
+    '=COUNTIFS(MEMBERS!AA2:AA, "*July*")',
+    '=COUNTIFS(MEMBERS!AA2:AA, "*August*")',
+    '=COUNTA(MEMBERS!A2:A)-AM4',
+    '=COUNTIF(MEMBERS!T2:T, "*,*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Artist Guild*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Broadcast*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Core Group*")',
+    '=COUNTIF(MEMBERS!T2:T, "*DRRT*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Guest Coordinators*")',
+    '=COUNTIF(MEMBERS!T2:T, "*LKD*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Bible Readers*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Music Ministry*")',
+    '=COUNTIF(MEMBERS!T2:T, "*NAR*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Officers*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Photoville*")',
+    '=COUNTIF(MEMBERS!T2:T, "*RACS*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Servants Ministry*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Teatro Kristiano*")',
+    '=COUNTIF(MEMBERS!T2:T, "*T.O.C.*")',
+    '=COUNTIF(MEMBERS!T2:T, "*Others*")',
+    '=COUNTIF(MEMBERS!T2:T, "")',
+    '=COUNTIF(MEMBERS!N2:N, "Student")',
+    '=COUNTIF(MEMBERS!O2:O, "Employed")',
+    '=COUNTIFS(MEMBERS!P2:P, "TRUE", MEMBERS!G2:G, ">=18")',
+    '=COUNTIF(MEMBERS!Q2:Q, "TRUE")',
+    '=COUNTIF(MEMBERS!R2:R, "TRUE")',
+    '=COUNTIF(MEMBERS!S2:S, "Mother Only")',
+    '=COUNTIF(MEMBERS!S2:S, "Father Only")',
+    '=COUNTIF(MEMBERS!S2:S, "Both Mother & Father")',
+    '=COUNTIF(MEMBERS!S2:S, "Unbaptized Parent/s")'
+  ];
+
+  sheet.getRange(1, 1, 1, row1.length).setValues([row1]);
+  sheet.getRange(2, 1, 1, row2.length).setValues([row2]);
+  sheet.getRange(3, 1, 1, row3.length).setValues([row3]);
+  sheet.getRange(4, 1, 1, row4.length).setValues([row4]);
+
+  // Style Header Rows
+  sheet.getRange(1, 1, 1, 20).setBackground('#1e3a8a').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+  sheet.getRange(1, 21, 1, 28).setBackground('#065f46').setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
+
+  sheet.getRange(2, 1, 1, 48).setBackground('#0f172a').setFontColor('#ffffff').setFontWeight('bold');
+  sheet.getRange(3, 1, 1, 48).setBackground('#f1f5f9').setFontColor('#0f172a').setFontWeight('bold').setFontSize(9);
+  sheet.getRange(4, 1, 1, 48).setFontWeight('bold').setHorizontalAlignment('center').setFontSize(11);
+
+  sheet.setFrozenRows(3);
+  sheet.setFrozenColumns(1);
+
+  return { success: true, message: 'Official MCGI Youth Summary sheet updated in Google Sheets!' };
+}
+
+/**
  * Save System Settings
  */
 function saveSettings(settings) {
@@ -708,7 +873,195 @@ function handleSaveLandingPageConfig(config) {
 }
 
 /**
- * Auto-Initialize all 12 Worksheets with professional headers, frozen rows, and formulas
+ * Direct Test Function
+ * You can select this function in the Apps Script toolbar and click "Run" ▶️
+ * to verify permissions and instantly create all 15 formatted sheets!
+ */
+function testScriptDirectly() {
+  Logger.log('Starting direct test: initializing spreadsheet structure...');
+  initializeSpreadsheetStructure();
+  Logger.log('Spreadsheet successfully initialized! Check your spreadsheet tabs.');
+}
+
+/**
+ * Bulk Push All Data from Web App to Google Sheets
+ */
+function handlePushAllData(data) {
+  if (!data) return { success: false, message: 'No data provided.' };
+  
+  // 1. Initialize all sheets and headers
+  initializeSpreadsheetStructure();
+  
+  var counts = { members: 0, events: 0, schedules: 0, attendance: 0, announcements: 0 };
+  
+  // 2. Members
+  if (data.members && Array.isArray(data.members) && data.members.length > 0) {
+    var memSheet = getOrCreateSheet(SHEETS.MEMBERS);
+    if (memSheet.getLastRow() > 1) {
+      memSheet.getRange(2, 1, memSheet.getLastRow() - 1, memSheet.getLastColumn()).clearContent();
+    }
+    
+    var memberRows = data.members.map(function(m) {
+      var commStr = Array.isArray(m.committees) ? m.committees.join(', ') : (m.committees || '');
+      return [
+        m.memberId || '',
+        m.firstName || '',
+        m.middleName || '',
+        m.lastName || '',
+        m.fullName || ((m.firstName || '') + ' ' + (m.lastName || '')),
+        m.birthday || '',
+        m.age || '',
+        m.gender || 'Male',
+        m.contactNumber || '',
+        m.email || '',
+        m.address || '',
+        m.membershipStatus || 'Active',
+        m.memberCategory || 'Junior',
+        m.studentStatus || 'Non-Student',
+        m.employmentStatus || 'Unemployed',
+        m.registeredVoter ? 'TRUE' : 'FALSE',
+        m.workingStudent ? 'TRUE' : 'FALSE',
+        m.outOfSchoolYouth ? 'TRUE' : 'FALSE',
+        m.parentBaptismStatus || 'Unbaptized Parent/s',
+        commStr,
+        m.dateRegistered || Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+        m.lastAttendanceDate || '',
+        m.attendanceCount || 0,
+        m.attendancePercentage || 0,
+        m.activityStatus || 'Active',
+        m.activityReason || '',
+        m.notes || '',
+        m.createdAt || new Date().toISOString(),
+        m.updatedAt || new Date().toISOString()
+      ];
+    });
+    
+    memSheet.getRange(2, 1, memberRows.length, memberRows[0].length).setValues(memberRows);
+    counts.members = memberRows.length;
+  }
+  
+  // 3. Events
+  if (data.events && Array.isArray(data.events) && data.events.length > 0) {
+    var evtSheet = getOrCreateSheet(SHEETS.ATTENDANCE_EVENTS);
+    if (evtSheet.getLastRow() > 1) {
+      evtSheet.getRange(2, 1, evtSheet.getLastRow() - 1, evtSheet.getLastColumn()).clearContent();
+    }
+    var eventRows = data.events.map(function(e) {
+      return [
+        e.eventId || '',
+        e.eventName || '',
+        e.eventType || '',
+        e.startDate || '',
+        e.endDate || '',
+        e.location || '',
+        e.description || '',
+        e.attendanceRule || '',
+        e.status || 'Active',
+        e.createdBy || 'Admin',
+        e.createdAt || new Date().toISOString(),
+        e.updatedAt || new Date().toISOString()
+      ];
+    });
+    evtSheet.getRange(2, 1, eventRows.length, eventRows[0].length).setValues(eventRows);
+    counts.events = eventRows.length;
+  }
+  
+  // 4. Schedules
+  if (data.schedules && Array.isArray(data.schedules) && data.schedules.length > 0) {
+    var schSheet = getOrCreateSheet(SHEETS.EVENT_SCHEDULES);
+    if (schSheet.getLastRow() > 1) {
+      schSheet.getRange(2, 1, schSheet.getLastRow() - 1, schSheet.getLastColumn()).clearContent();
+    }
+    var schRows = data.schedules.map(function(s) {
+      return [
+        s.scheduleId || '',
+        s.eventId || '',
+        s.date || '',
+        s.startTime || '',
+        s.endTime || '',
+        s.scheduleLabel || '',
+        s.location || '',
+        s.status || 'Active',
+        s.createdAt || new Date().toISOString(),
+        s.updatedAt || new Date().toISOString()
+      ];
+    });
+    schSheet.getRange(2, 1, schRows.length, schRows[0].length).setValues(schRows);
+    counts.schedules = schRows.length;
+  }
+  
+  // 5. Attendance
+  if (data.attendance && Array.isArray(data.attendance) && data.attendance.length > 0) {
+    var attSheet = getOrCreateSheet(SHEETS.ATTENDANCE_RECORDS);
+    if (attSheet.getLastRow() > 1) {
+      attSheet.getRange(2, 1, attSheet.getLastRow() - 1, attSheet.getLastColumn()).clearContent();
+    }
+    var attRows = data.attendance.map(function(a) {
+      return [
+        a.attendanceId || '',
+        a.eventId || '',
+        a.scheduleId || '',
+        a.memberId || '',
+        a.memberName || '',
+        a.eventName || '',
+        a.eventDate || '',
+        a.schedule || '',
+        a.attendanceStatus || 'Present',
+        a.recordedBy || 'System',
+        a.recordedAt || new Date().toISOString(),
+        a.updatedAt || new Date().toISOString(),
+        a.notes || ''
+      ];
+    });
+    attSheet.getRange(2, 1, attRows.length, attRows[0].length).setValues(attRows);
+    counts.attendance = attRows.length;
+  }
+  
+  // 6. Announcements
+  if (data.announcements && Array.isArray(data.announcements) && data.announcements.length > 0) {
+    var annSheet = getOrCreateSheet(SHEETS.ANNOUNCEMENTS);
+    if (annSheet.getLastRow() > 1) {
+      annSheet.getRange(2, 1, annSheet.getLastRow() - 1, annSheet.getLastColumn()).clearContent();
+    }
+    var annRows = data.announcements.map(function(a) {
+      return [
+        a.announcementId || '',
+        a.title || '',
+        a.description || '',
+        a.image || '',
+        a.publishDate || '',
+        a.startDisplayDate || '',
+        a.endDisplayDate || '',
+        a.location || '',
+        a.eventDate || '',
+        a.linkedEventId || '',
+        a.status || 'Published',
+        a.featured ? true : false,
+        a.createdBy || 'Admin',
+        a.createdAt || new Date().toISOString(),
+        new Date().toISOString()
+      ];
+    });
+    annSheet.getRange(2, 1, annRows.length, annRows[0].length).setValues(annRows);
+    counts.announcements = annRows.length;
+  }
+  
+  // 7. Official Summary
+  if (data.officialSummary) {
+    saveOfficialSummary(data.officialSummary);
+  } else {
+    saveOfficialSummary();
+  }
+  
+  return {
+    success: true,
+    message: 'Successfully populated Google Sheets! Pushed ' + counts.members + ' members, ' + counts.events + ' events, ' + counts.attendance + ' attendance records, and formatted all official summary tabs.',
+    counts: counts
+  };
+}
+
+/**
+ * Auto-Initialize all 15 Worksheets with professional headers, frozen rows, and formulas
  */
 function initializeSpreadsheetStructure() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -894,7 +1247,7 @@ function initializeSpreadsheetStructure() {
   var landSheet = getOrCreateSheet(SHEETS.LANDING_PAGE);
   if (landSheet.getLastRow() === 0) {
     landSheet.appendRow(['Config Key', 'Value', 'Updated At']);
-    landSheet.appendRow(['chapterName', 'MCGI YOUTH • CAMANAVA / NCR DISTRICT 1', new Date().toISOString()]);
+    landSheet.appendRow(['chapterName', 'MCGI YOUTH • LOCAL OF ASCOVILLE', new Date().toISOString()]);
     landSheet.appendRow(['heroTitle', 'Welcome, Youth!', new Date().toISOString()]);
     landSheet.appendRow(['heroSubtitle', 'Stay connected with our upcoming activities, announcements, and your attendance.', new Date().toISOString()]);
     landSheet.appendRow(['heroImageUrl', 'https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=1920&q=80', new Date().toISOString()]);
@@ -902,6 +1255,9 @@ function initializeSpreadsheetStructure() {
     landSheet.appendRow(['verificationMethod', 'member_id', new Date().toISOString()]);
   }
   formatHeaderRow(landSheet, 3);
+
+  // 15. OFFICIAL_SUMMARY (Official MCGI Youth Multi-Level Header Reporting Format)
+  saveOfficialSummary();
 }
 
 /**

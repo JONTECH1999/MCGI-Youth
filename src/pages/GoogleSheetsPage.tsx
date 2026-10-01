@@ -11,6 +11,8 @@ import {
   ShieldCheck,
   Code,
   Zap,
+  UploadCloud,
+  HelpCircle,
 } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { GasApiService } from '../services/gasApi';
@@ -22,6 +24,7 @@ export const GoogleSheetsPage: React.FC = () => {
     testConnection,
     syncFromGoogleSheets,
     initGoogleSheets,
+    pushAllToGoogleSheets,
     connectionStatus,
     connectionError,
     lastSyncTimestamp,
@@ -34,7 +37,9 @@ export const GoogleSheetsPage: React.FC = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [initResult, setInitResult] = useState<string | null>(null);
+  const [initResult, setInitResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isPushingAll, setIsPushingAll] = useState(false);
+  const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
   // Save Connection Settings
   const handleSaveConnection = async () => {
@@ -69,15 +74,37 @@ export const GoogleSheetsPage: React.FC = () => {
     setInitResult(null);
     try {
       const res = await initGoogleSheets();
-      if (res.success) {
-        setInitResult('All 12 worksheets formatted and created in Google Sheets!');
-      } else {
-        setInitResult(`Failed: ${res.message || 'Check Apps Script deployment permissions.'}`);
-      }
+      setInitResult({
+        success: res.success,
+        message: res.message || (res.success ? 'All 15 worksheets (including OFFICIAL_SUMMARY table) formatted and created in Google Sheets!' : 'Failed to initialize sheets.'),
+      });
     } catch (err: any) {
-      setInitResult(`Error: ${err.message}`);
+      setInitResult({
+        success: false,
+        message: `Error: ${err.message}`,
+      });
     } finally {
       setIsInitializing(false);
+    }
+  };
+
+  // Push all local app data to Google Sheets
+  const handlePushAll = async () => {
+    setIsPushingAll(true);
+    setPushResult(null);
+    try {
+      const res = await pushAllToGoogleSheets();
+      setPushResult({
+        success: res.success,
+        message: res.message || (res.success ? 'Successfully uploaded all app data to Google Sheets!' : 'Failed to push data.'),
+      });
+    } catch (err: any) {
+      setPushResult({
+        success: false,
+        message: err.message || 'Error uploading data to Google Sheets.',
+      });
+    } finally {
+      setIsPushingAll(false);
     }
   };
 
@@ -137,11 +164,25 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
           <span>Google Apps Script Web App Connection</span>
         </h3>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Google Apps Script Web App URL * (ends in <code>/exec</code>)
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-semibold text-slate-700">
+                Google Apps Script Web App URL * (must end in <code>/exec</code>)
+              </label>
+              {appsScriptUrlInput.trim().includes('/exec') && (
+                <a
+                  href={`${appsScriptUrlInput.trim()}${appsScriptUrlInput.includes('?') ? '&' : '?'}action=ping`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-800 underline"
+                  title="Opens a new browser tab directly testing your Apps Script deployment"
+                >
+                  <span>Test in Browser Tab</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
             <input
               type="url"
               value={appsScriptUrlInput}
@@ -150,7 +191,7 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               className="w-full rounded-lg border border-slate-300 py-2 px-3 text-xs font-mono focus:border-blue-500 focus:outline-hidden"
             />
             <p className="text-[11px] text-slate-500 mt-1">
-              Obtain this by deploying your Apps Script as a Web App with access set to "Anyone".
+              Obtained from Google Spreadsheet &gt; Extensions &gt; Apps Script &gt; Deploy &gt; New deployment &gt; Web app (Access: Anyone).
             </p>
           </div>
 
@@ -167,63 +208,112 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={handleTest}
-              disabled={isTesting || !appsScriptUrlInput.trim()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isTesting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-              <span>{isTesting ? 'Testing Connection...' : 'Test Connection & Save'}</span>
-            </button>
+          {/* Action Buttons Grid */}
+          <div className="pt-2">
+            <span className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+              Synchronization Actions
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+              {/* 1. Test Connection */}
+              <button
+                type="button"
+                onClick={handleTest}
+                disabled={isTesting || !appsScriptUrlInput.trim()}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                title="Pings your Apps Script Web App to verify live communication"
+              >
+                {isTesting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                <span>{isTesting ? 'Testing...' : '1. Test Connection'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => syncFromGoogleSheets()}
-              disabled={isSyncing || !GasApiService.isConfigured()}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Syncing...' : 'Sync All Data from Google Sheets'}</span>
-            </button>
+              {/* 2. Format 15 Sheets */}
+              <button
+                type="button"
+                onClick={handleInitializeSpreadsheet}
+                disabled={isInitializing || !GasApiService.isConfigured()}
+                className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                title="Creates all 15 worksheets (MEMBERS, ATTENDANCE_EVENTS, OFFICIAL_SUMMARY, etc.) with frozen navy blue headers and formulas"
+              >
+                {isInitializing ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-slate-500" /> : <Layers className="h-3.5 w-3.5 text-slate-500" />}
+                <span>{isInitializing ? 'Formatting...' : '2. Format 15 Sheets'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={handleInitializeSpreadsheet}
-              disabled={isInitializing || !GasApiService.isConfigured()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-              title="Automatically creates all 12 worksheets with frozen rows, formulas, and formatting"
-            >
-              <Layers className="h-3.5 w-3.5 text-slate-500" />
-              <span>Auto-Initialize All 12 Sheets</span>
-            </button>
+              {/* 3. Push All App Data (Upload) */}
+              <button
+                type="button"
+                onClick={handlePushAll}
+                disabled={isPushingAll || !GasApiService.isConfigured()}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+                title="Uploads all members, attendance, events, announcements, and official summaries into your Google Sheet"
+              >
+                <UploadCloud className={`h-3.5 w-3.5 ${isPushingAll ? 'animate-spin' : ''}`} />
+                <span>{isPushingAll ? 'Uploading Data...' : '3. Push All App Data'}</span>
+              </button>
+
+              {/* 4. Sync from Google Sheets (Download) */}
+              <button
+                type="button"
+                onClick={() => syncFromGoogleSheets()}
+                disabled={isSyncing || !GasApiService.isConfigured()}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition-colors"
+                title="Pulls and updates members and records from Google Sheets down into this web app"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Downloading...' : '4. Sync from Sheets'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Test Status feedback */}
           {testResult && (
             <div
-              className={`p-3 rounded-lg border text-xs ${
+              className={`p-3.5 rounded-xl border text-xs ${
                 testResult.success
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                   : 'bg-rose-50 border-rose-200 text-rose-900'
               }`}
             >
               <div className="flex items-center gap-2 font-bold">
-                {testResult.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <AlertCircle className="h-4 w-4 text-rose-600" />}
+                {testResult.success ? <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />}
                 <span>{testResult.message}</span>
               </div>
               {testResult.details?.spreadsheetTitle && (
                 <p className="mt-1 text-[11px] text-emerald-800">
-                  Target Spreadsheet: <strong>{testResult.details.spreadsheetTitle}</strong>
+                  Target Spreadsheet: <strong>{testResult.details.spreadsheetTitle}</strong> (ID: {testResult.details.spreadsheetId})
                 </p>
               )}
             </div>
           )}
 
+          {/* Init Status feedback */}
           {initResult && (
-            <div className="p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-900 text-xs">
-              {initResult}
+            <div
+              className={`p-3.5 rounded-xl border text-xs ${
+                initResult.success
+                  ? 'bg-blue-50 border-blue-200 text-blue-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
+            >
+              <div className="flex items-center gap-2 font-bold">
+                {initResult.success ? <CheckCircle2 className="h-4 w-4 text-blue-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />}
+                <span>{initResult.message}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Push Status feedback */}
+          {pushResult && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs ${
+                pushResult.success
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-900'
+              }`}
+            >
+              <div className="flex items-center gap-2 font-bold">
+                {pushResult.success ? <CheckCircle2 className="h-4 w-4 text-indigo-600 shrink-0" /> : <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />}
+                <span>{pushResult.message}</span>
+              </div>
             </div>
           )}
 
@@ -271,43 +361,45 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
                 Click <strong>Extensions</strong> → <strong>Apps Script</strong>.
               </li>
               <li>
-                Copy the code from <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700">google-apps-script/Code.gs</code> and paste it into the editor.
+                Copy all code from <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-700">google-apps-script/Code.gs</code> and paste it into the editor.
               </li>
               <li>
-                Run <strong>`initializeSpreadsheetStructure()`</strong> from the toolbar once to create and format all 12 sheets with official MCGI blue headers and formulas!
+                <strong>Direct Test (100% Guaranteed):</strong> Select <strong>`testScriptDirectly`</strong> from the function dropdown at the top and click <strong>Run ▶️</strong>. Authorize permissions when prompted. This instantly creates and formats all 15 sheets!
               </li>
               <li>
                 Click <strong>Deploy</strong> → <strong>New deployment</strong> → Select <strong>Web app</strong>.
               </li>
               <li>
-                Set <em>Execute as:</em> <strong>Me</strong> and <em>Who has access:</em> <strong>Anyone</strong>.
+                Set <em>Execute as:</em> <strong>Me</strong> and <em>Who has access:</em> <strong>Anyone</strong> (crucial: if set to "Only myself", Google blocks web requests).
               </li>
               <li>
-                Copy the Web app URL and paste it into the input box above!
+                Copy the Web app URL (ends in <code>/exec</code>) and paste it into the input box above, then click <strong>3. Push All App Data</strong>!
               </li>
             </ol>
           </div>
 
-          <div className="p-4 bg-slate-900 text-slate-300 rounded-xl space-y-2">
+          <div className="p-4 bg-slate-900 text-slate-300 rounded-xl space-y-3">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <span className="font-mono text-[11px] text-slate-400">google-apps-script/Code.gs</span>
-              <span className="text-[10px] text-emerald-400 font-bold">Production Ready</span>
+              <span className="font-bold text-xs text-white flex items-center gap-1.5">
+                <HelpCircle className="h-3.5 w-3.5 text-amber-400" />
+                <span>Why is my Google Sheet empty?</span>
+              </span>
+              <span className="text-[10px] text-emerald-400 font-bold">Troubleshooting</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              Includes full support for:
-            </p>
-            <ul className="list-disc pl-4 text-[11px] space-y-1 text-slate-300">
-              <li>Batch Attendance saving with duplicate prevention</li>
-              <li>Member CRUD & Safe Inactive Archiving</li>
-              <li>Automatic formulas for Membership & Attendance stats</li>
-              <li>Full Audit trail and Status change history</li>
-              <li>Official Submission Report formatting</li>
+            <ul className="list-disc pl-4 text-[11px] space-y-1.5 text-slate-300">
+              <li>
+                <strong>"Sync from Sheets" downloads FROM your sheet:</strong> If your sheet is currently blank, clicking Sync will not add data to Google Sheets. Use <strong>"3. Push All App Data"</strong> to upload all members and attendance to your sheet!
+              </li>
+              <li>
+                <strong>"Format 15 Sheets" only creates table headers:</strong> It generates the 15 tabs and official MCGI blue columns. You still need to click <strong>"3. Push All App Data"</strong> to populate the rows.
+              </li>
+              <li>
+                <strong>Permission Issue:</strong> If "Who has access" in your Apps Script deployment is set to "Only myself", Google blocks external browsers. Update the deployment to "Anyone".
+              </li>
+              <li>
+                <strong>Instant Local Test:</strong> Inside Google Sheets Apps Script, click the function dropdown, pick <code>testScriptDirectly</code>, and click <strong>Run ▶️</strong>.
+              </li>
             </ul>
-            <div className="pt-2">
-              <p className="text-[10px] text-slate-500 italic">
-                File is located at <code>file:///google-apps-script/Code.gs</code>
-              </p>
-            </div>
           </div>
         </div>
       </div>

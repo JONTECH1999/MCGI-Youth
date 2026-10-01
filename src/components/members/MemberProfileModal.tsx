@@ -22,6 +22,7 @@ import { AttendanceRecord } from '../../types/attendance';
 import { Modal } from '../common/Modal';
 import { StatusBadge } from '../common/Badge';
 import { AttendanceService } from '../../services/attendanceService';
+import { COMMITTEE_METADATA } from '../../data/sampleCommittees';
 
 interface MemberProfileModalProps {
   member: Member | null;
@@ -109,10 +110,27 @@ export const MemberProfileModal: React.FC<MemberProfileModalProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">{member.fullName}</h2>
-              <div className="flex flex-wrap items-center gap-2 mt-1">
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 <StatusBadge status={member.membershipStatus} />
                 <StatusBadge status={member.memberCategory} />
                 <StatusBadge status={member.activityStatus} />
+                {member.isForgiven && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <Heart className="w-3 h-3 text-emerald-400" />
+                    <span>Napatawad / Restored</span>
+                  </span>
+                )}
+                {member.isNBB && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40">
+                    <CheckCircle2 className="w-3 h-3 text-blue-400" />
+                    <span>NBB Youth ({member.nbbMonth || '2nd Quarter'})</span>
+                  </span>
+                )}
+                {member.membershipStatus === 'Suspended' && member.suspensionCategory && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                    <span>{member.suspensionCategory}</span>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -179,15 +197,21 @@ export const MemberProfileModal: React.FC<MemberProfileModalProps> = ({
               <div className="col-span-2">
                 <span className="text-slate-500 block mb-1">Committees Assigned:</span>
                 {member.committees && member.committees.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {member.committees.map((comm) => (
-                      <span
-                        key={comm}
-                        className="bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded text-[11px] font-medium"
-                      >
-                        {comm}
-                      </span>
-                    ))}
+                  <div className="flex flex-wrap gap-1.5">
+                    {member.committees.map((comm) => {
+                      const meta = COMMITTEE_METADATA[comm];
+                      return (
+                        <span
+                          key={comm}
+                          className="inline-flex items-center gap-1 bg-blue-50 text-blue-900 border border-blue-200 px-2 py-0.5 rounded text-[11px] font-semibold"
+                        >
+                          <span>{meta?.displayLabel || comm}</span>
+                          {meta?.alias && (
+                            <span className="text-[10px] text-blue-600 font-mono">[{meta.alias}]</span>
+                          )}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
                   <span className="text-slate-400 italic">None assigned</span>

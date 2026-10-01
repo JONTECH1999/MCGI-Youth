@@ -31,23 +31,23 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
                   MCGI YOUTH
                 </span>
                 <p className="text-[11px] text-amber-400/90 font-medium uppercase tracking-wider">
-                  {chapterName || 'CAMANAVA / NCR DISTRICT 1'}
+                  {chapterName || 'MCGI YOUTH • LOCAL OF ASCOVILLE'}
                 </p>
               </div>
             </div>
 
             <p className="text-xs sm:text-sm text-stone-400 max-w-md leading-relaxed">
-              Serving the youth brethren and local chapters across Caloocan, Malabon, Navotas, and Valenzuela through faith, love, and dedicated spiritual fellowship.
+              Serving the youth brethren and community of the Local of Ascoville through faith, love, and dedicated spiritual fellowship.
             </p>
 
             <div className="flex flex-col space-y-2 text-xs text-stone-400 pt-2">
               <div className="flex items-center space-x-2">
                 <MapPin className="w-3.5 h-3.5 text-amber-500" />
-                <span>{contactLocation || 'CAMANAVA / NCR District 1, Philippines'}</span>
+                <span>{contactLocation || 'Local of Ascoville, Philippines'}</span>
               </div>
               <div className="flex items-center space-x-2">
                 <Mail className="w-3.5 h-3.5 text-amber-500" />
-                <span>{contactEmail || 'youth.camanava@mcgi.org'}</span>
+                <span>{contactEmail || 'youth.ascoville@mcgi.org'}</span>
               </div>
             </div>
           </div>
@@ -101,7 +101,7 @@ export const LandingFooter: React.FC<LandingFooterProps> = ({
 
         {/* Bottom Bar with Discreet Admin Access */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-stone-500 gap-4">
-          <p>© {new Date().getFullYear()} MCGI Youth Ministry — NCR District 1. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} MCGI Youth Ministry — Local of Ascoville. All rights reserved.</p>
 
           <div className="flex items-center space-x-6">
             <span className="flex items-center space-x-1.5 text-stone-400">

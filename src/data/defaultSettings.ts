@@ -1,4 +1,5 @@
 import { SystemSettings } from '../types/settings';
+import { DEFAULT_COMMITTEE_SETTINGS } from './sampleCommittees';
 
 export const DEFAULT_SETTINGS: SystemSettings = {
   attendanceRules: {
@@ -18,4 +19,5 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     connectionStatus: 'Disconnected',
     lastSyncTimestamp: undefined,
   },
+  committees: DEFAULT_COMMITTEE_SETTINGS,
 };

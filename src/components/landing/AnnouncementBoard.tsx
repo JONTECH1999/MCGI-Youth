@@ -30,7 +30,7 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
             <span>Official Digital Board</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight">
-            Announcements & District Circulars
+            Announcements & Locale Circulars
           </h2>
           <p className="text-stone-600 text-sm sm:text-base max-w-2xl leading-relaxed">
             Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.

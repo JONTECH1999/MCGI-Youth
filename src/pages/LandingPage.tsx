@@ -23,6 +23,7 @@ import { useAppData } from '../context/AppDataContext';
 import { Member } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { Announcement } from '../types/announcement';
+import { GatheringItem } from '../types/landingPage';
 
 // Modals
 import { MemberSearchModal } from '../components/landing/MemberSearchModal';
@@ -163,30 +164,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   const testimonies = [
     {
       quote:
-        'Being part of the MCGI Youth in CAMANAVA has kept my spiritual compass grounded. Having a clear and reliable check-in portal makes staying accountable to our gatherings effortless.',
+        'Being part of the MCGI Youth in the Local of Ascoville has kept my spiritual compass grounded. Having a clear and reliable check-in portal makes staying accountable to our gatherings effortless.',
       author: 'Bro. Joshua Ramos',
-      role: 'Youth Choir Member · Caloocan Locale',
+      role: 'Youth Choir Member · Local of Ascoville',
       avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
     },
     {
       quote:
-        'The fellowship and Christian community across District 1 inspire us to serve with joy. Checking our attendance and upcoming schedules has never been this smooth and dignified.',
+        'The fellowship and Christian community across our locale inspire us to serve with joy. Checking our attendance and upcoming schedules has never been this smooth and dignified.',
       author: 'Sis. Andrea Santos',
-      role: 'Teatro Kristiano · Malabon Locale',
+      role: 'Teatro Kristiano · Local of Ascoville',
       avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
     },
     {
       quote:
         'As working youth, having transparent access to our prayer meeting schedules and thanksgiving records keeps us aligned with God’s work no matter how hectic school or work gets.',
       author: 'Bro. Mark Villanueva',
-      role: 'Outreach Volunteer · Valenzuela Locale',
+      role: 'Outreach Volunteer · Local of Ascoville',
       avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
     },
     {
       quote:
-        'The dedication of our district coordinators and secretariats is inspiring. This portal reflects genuine professionalism, orderliness, and Christian brotherhood.',
+        'The dedication of our locale coordinators and secretariat is inspiring. This portal reflects genuine professionalism, orderliness, and Christian brotherhood.',
       author: 'Sis. Patricia Cruz',
-      role: 'Secretariat Committee · Navotas Locale',
+      role: 'Secretariat Committee · Local of Ascoville',
       avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
     },
   ];
@@ -199,54 +200,75 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     setTestimonialIndex((prev) => (prev - 1 + testimonies.length) % testimonies.length);
   };
 
-  // 4 Core Sacred Gatherings (Practice Areas style)
-  const defaultGatherings = [
-    {
-      num: '01',
-      title: 'Prayer Meeting',
-      subtitle: 'Midweek Spiritual Edification',
-      desc: 'Regular midweek congregational gathering for deep prayer, biblical guidance, and strengthening of faith.',
-      image: 'https://images.unsplash.com/photo-1445445294270-ce521a0e50dc?auto=format&fit=crop&w=800&q=80',
-      type: 'prayer_meeting',
-    },
-    {
-      num: '02',
-      title: 'Worship Service',
-      subtitle: 'Holy Sabbath Praise & Doctrine',
-      desc: 'Reverent spiritual worship and doctrinal contemplation for all youth brethren and brethren in faith.',
-      image: 'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&w=800&q=80',
-      type: 'worship_service',
-    },
-    {
-      num: '03',
-      title: 'Thanksgiving of God’s People',
-      subtitle: 'Weekly Celebration of Grace',
-      desc: 'Congregational sacrifice of thanksgiving (Pasalamat) for God’s continuous mercy, protection, and guidance.',
-      image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
-      type: 'tgp',
-    },
-    {
-      num: '04',
-      title: 'Youth Christian Fellowship',
-      subtitle: 'KKTK Activities & Outreach',
-      desc: 'Dynamic brotherhood events, charitable missions, bible studies, choir practice, and community service.',
-      image: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80',
-      type: 'special_event',
-    },
-  ];
+  // Sacred Gatherings (dynamic from config or defaults)
+  const activeGatherings: GatheringItem[] = React.useMemo(() => {
+    if (landingPageConfig?.gatherings && landingPageConfig.gatherings.length > 0) {
+      return landingPageConfig.gatherings;
+    }
+    return [
+      {
+        id: 'gath-1',
+        num: '01',
+        title: 'Prayer Meeting',
+        subtitle: 'Midweek Spiritual Edification',
+        date: 'Every Wednesday & Thursday',
+        desc: 'Regular midweek congregational gathering for deep prayer, biblical guidance, and strengthening of faith.',
+        image:
+          landingPageConfig?.gatheringImages?.prayerMeeting ||
+          'https://images.unsplash.com/photo-1445445294270-ce521a0e50dc?auto=format&fit=crop&w=800&q=80',
+        type: 'prayer_meeting',
+      },
+      {
+        id: 'gath-2',
+        num: '02',
+        title: 'Worship Service',
+        subtitle: 'Holy Sabbath Praise & Doctrine',
+        date: 'Every Weekend (Saturday & Sunday)',
+        desc: 'Reverent spiritual worship and doctrinal contemplation for all youth brethren and brethren in faith.',
+        image:
+          landingPageConfig?.gatheringImages?.worshipService ||
+          'https://images.unsplash.com/photo-1519791883288-dc8bd696e667?auto=format&fit=crop&w=800&q=80',
+        type: 'worship_service',
+      },
+      {
+        id: 'gath-3',
+        num: '03',
+        title: 'Thanksgiving of God’s People',
+        subtitle: 'Weekly Celebration of Grace',
+        date: 'Every Saturday Evening (Pasalamat)',
+        desc: 'Congregational sacrifice of thanksgiving (Pasalamat) for God’s continuous mercy, protection, and guidance.',
+        image:
+          landingPageConfig?.gatheringImages?.thanksgiving ||
+          'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
+        type: 'tgp',
+      },
+      {
+        id: 'gath-4',
+        num: '04',
+        title: 'Youth Christian Fellowship',
+        subtitle: 'KKTK Activities & Outreach',
+        date: 'Monthly Gatherings & Missions',
+        desc: 'Dynamic brotherhood events, charitable missions, bible studies, choir practice, and community service.',
+        image:
+          landingPageConfig?.gatheringImages?.fellowship ||
+          'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80',
+        type: 'special_event',
+      },
+    ];
+  }, [landingPageConfig]);
 
   // Leadership Team (6 members)
   const committeeLeaders = [
     {
       name: 'Bro. Daniel Ramos',
-      role: 'District Youth Coordinator',
-      area: 'CAMANAVA District 1',
+      role: 'Ascoville Youth Coordinator',
+      area: 'Local of Ascoville',
       experience: 'Youth Leadership · 8 Years in Service',
       image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=600&q=80',
     },
     {
       name: 'Sis. Abigail Mendoza',
-      role: 'District Attendance Secretary',
+      role: 'Ascoville Attendance Secretary',
       area: 'Secretariat & Records',
       experience: 'Data Management · 5 Years in Service',
       image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
@@ -274,7 +296,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     },
     {
       name: 'Bro. Ethan James Lopez',
-      role: 'District Tech & IT Secretary',
+      role: 'Ascoville Tech & IT Secretary',
       area: 'Systems & Infrastructure',
       experience: 'Google Cloud & Systems · 4 Years in Service',
       image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80',
@@ -295,13 +317,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-bronze-500"></span>
             <span className="text-[11px] uppercase tracking-wider text-charcoal-800/60 font-medium hidden sm:inline ml-1">
-              CAMANAVA
+              ASCOVILLE
             </span>
           </a>
 
           <nav className="hidden md:flex items-center space-x-8 text-sm font-medium text-charcoal-800">
             <a href="#about" className="hover:text-bronze-600 transition">
-              About District
+              About Locale
             </a>
             <a href="#gatherings" className="hover:text-bronze-600 transition">
               Gatherings
@@ -372,7 +394,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             <div className="relative z-10">
               <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium tracking-wide uppercase bg-white/10 backdrop-blur-md border border-white/15 text-cream-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-bronze-400"></span>
-                MCGI Youth · CAMANAVA / NCR District 1
+                MCGI Youth · Local of Ascoville
               </span>
             </div>
 
@@ -384,7 +406,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </h1>
               <p className="mt-6 text-base sm:text-lg text-cream-200/80 font-light max-w-xl">
                 {landingPageConfig?.heroSubtitle ||
-                  'A vibrant spiritual community for youth brethren across Caloocan, Malabon, Navotas, and Valenzuela — built to nurture faith, service, and attendance diligence.'}
+                  'A vibrant spiritual community for youth brethren of the Local of Ascoville — built to nurture faith, service, and attendance diligence.'}
               </p>
 
               {/* Quick Search & Actions */}
@@ -444,7 +466,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
                 Official Google Sheets Database Active & Synchronized
               </span>
-              <span>Caloocan · Malabon · Navotas · Valenzuela</span>
+              <span>Members Church of God International · Local of Ascoville</span>
             </div>
           </div>
         </div>
@@ -457,14 +479,17 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             {/* Left 5 Cols: Narrative Copy & Image */}
             <div className="lg:col-span-5 space-y-8">
               <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                The District Story
+                The Locale Story
               </p>
               <p className="text-charcoal-800 text-base leading-relaxed font-normal">
-                Rooted in deep Christian love, biblical sound doctrine, and tireless brotherhood, the MCGI Youth in CAMANAVA (NCR District 1) unites young brethren in fulfilling our divine calling to be the salt and light of the world.
+                Rooted in deep Christian love, biblical sound doctrine, and tireless brotherhood, the MCGI Youth in the Local of Ascoville unites young brethren in fulfilling our divine calling to be the salt and light of the world.
               </p>
               <div className="img-hover-zoom rounded-2xl aspect-[4/3] bg-cream-200">
                 <img
-                  src="https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=80"
+                  src={
+                    landingPageConfig?.aboutImageUrl ||
+                    'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=80'
+                  }
                   alt="MCGI Youth Fellowship"
                   className="w-full h-full object-cover"
                 />
@@ -475,7 +500,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             <div className="lg:col-span-7 flex flex-col justify-between h-full space-y-10">
               <div className="space-y-6">
                 <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-normal leading-tight text-charcoal-950">
-                  Vibrant fellowship helping youth brethren across CAMANAVA walk in spiritual integrity.
+                  Vibrant fellowship helping youth brethren across the Local of Ascoville walk in spiritual integrity.
                 </h2>
                 <a
                   href="#leadership"
@@ -491,7 +516,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                   Our Sacred Commission
                 </p>
                 <p className="text-charcoal-800 text-sm leading-relaxed max-w-xl font-light">
-                  We maintain strict accountability and order in attendance recording, compassionate follow-up for on-and-off youth, and inspiring avenues for music, arts, and charitable missions across Northern NCR.
+                  We maintain strict accountability and order in attendance recording, compassionate follow-up for on-and-off youth, and inspiring avenues for music, arts, and charitable missions in Ascoville.
                 </p>
               </div>
             </div>
@@ -512,37 +537,54 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </h2>
             </div>
             <p className="text-charcoal-800 text-sm max-w-md font-light leading-relaxed">
-              Join congregational services, midweek prayer meetings, and special district youth gatherings scheduled across CAMANAVA locales.
+              Join congregational services, midweek prayer meetings, and special youth gatherings scheduled at the Local of Ascoville.
             </p>
           </div>
 
           {/* 4-Card Practice Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {defaultGatherings.map((g, i) => {
+          {/* Dynamic Gathering Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {activeGatherings.map((g, i) => {
               // Find matching real event from data if available
               const matchedEvent = events.find(
-                (e) => e.eventType === g.type || e.eventName.toLowerCase().includes(g.title.toLowerCase())
+                (e) =>
+                  e.eventId === g.linkedEventId ||
+                  e.eventType === g.type ||
+                  e.eventName.toLowerCase().includes(g.title.toLowerCase())
               );
               return (
                 <div
-                  key={i}
-                  className="group relative rounded-2xl overflow-hidden bg-charcoal-900 h-[480px] flex flex-col justify-end p-6 img-hover-zoom"
+                  key={g.id || i}
+                  className="group relative rounded-2xl overflow-hidden bg-charcoal-900 min-h-[480px] flex flex-col justify-end p-6 img-hover-zoom border border-white/5 hover:border-bronze-400/40 transition duration-300"
                 >
                   <img
-                    src={matchedEvent?.eventImage || g.image}
+                    src={g.image || matchedEvent?.eventImage || 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80'}
                     alt={g.title}
                     className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:scale-105 transition-transform duration-700"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950 via-charcoal-950/60 to-transparent"></div>
                   <div className="relative z-10 space-y-3">
-                    <span className="text-xs uppercase tracking-widest text-bronze-400 font-semibold">
-                      {g.num}
-                    </span>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs uppercase tracking-widest text-bronze-400 font-bold">
+                        {g.num || String(i + 1).padStart(2, '0')}
+                      </span>
+                      {g.date && (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold bg-charcoal-900/85 backdrop-blur-md text-amber-300 border border-amber-400/30">
+                          <Calendar className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span className="truncate max-w-[150px]">{g.date}</span>
+                        </span>
+                      )}
+                    </div>
                     <h3 className="font-serif text-2xl text-white font-normal leading-snug">
-                      {matchedEvent ? matchedEvent.eventName : g.title}
+                      {g.title}
                     </h3>
-                    <p className="text-cream-200/70 text-xs font-light leading-relaxed">
-                      {matchedEvent ? matchedEvent.description : g.desc}
+                    {g.subtitle && (
+                      <p className="text-[11px] uppercase tracking-wider font-semibold text-bronze-400/90">
+                        {g.subtitle}
+                      </p>
+                    )}
+                    <p className="text-cream-200/70 text-xs font-light leading-relaxed line-clamp-3">
+                      {g.desc || matchedEvent?.description}
                     </p>
                     <button
                       onClick={() => {
@@ -573,7 +615,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             {/* Left 7 Cols: Image Banner */}
             <div className="lg:col-span-7 rounded-3xl overflow-hidden relative bg-charcoal-950 p-8 sm:p-14 flex flex-col justify-between min-h-[440px]">
               <img
-                src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80"
+                src={
+                  landingPageConfig?.processImageUrl ||
+                  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80'
+                }
                 alt="Process Background"
                 className="absolute inset-0 w-full h-full object-cover opacity-25"
               />
@@ -624,7 +669,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                   Verify Standing & Status
                 </h4>
                 <p className="text-charcoal-800 text-xs mt-2 font-light leading-relaxed">
-                  Confirm your identity securely. View your committee memberships, attendance rate, registered locale, and active status in District 1.
+                  Confirm your identity securely. View your committee memberships, attendance rate, registered locale, and active status in the Local of Ascoville.
                 </p>
               </div>
 
@@ -656,7 +701,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               Coordinators & Committee Heads.
             </h2>
             <p className="mt-4 text-charcoal-800 text-sm font-light">
-              Elders, youth officers, and ministry coordinators committed to assisting brethren across Caloocan, Malabon, Navotas, and Valenzuela.
+              Elders, youth officers, and ministry coordinators committed to assisting brethren in the Local of Ascoville.
             </p>
           </div>
 
@@ -732,7 +777,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 Voices of our youth.
               </h2>
               <p className="text-charcoal-800 text-sm font-light leading-relaxed">
-                Reflections and affirmations from active youth members serving across CAMANAVA District 1 locales.
+                Reflections and affirmations from active youth members serving in the Local of Ascoville.
               </p>
               <div className="flex items-center gap-3 pt-4">
                 <button
@@ -782,72 +827,96 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
       </section>
 
       {/* Insights / Blog Grid (Section 8 - Announcements & Circulars) matching Leagally */}
-      <section id="announcements" className="py-24 border-b border-cream-300">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-16 gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
-                Perspectives & Circulars
-              </p>
-              <h2 className="font-serif text-3xl sm:text-4xl text-charcoal-950 font-normal">
-                Digital Announcement Board.
-              </h2>
+      {landingPageConfig?.showAnnouncements !== false && (
+        <section id="announcements" className="py-24 border-b border-cream-300">
+          <div className="max-w-7xl mx-auto px-6">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-16 gap-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
+                  {landingPageConfig?.announcementsSubtitle || 'Perspectives & Circulars'}
+                </p>
+                <h2 className="font-serif text-3xl sm:text-4xl text-charcoal-950 font-normal">
+                  {landingPageConfig?.announcementsTitle || 'Digital Announcement Board.'}
+                </h2>
+              </div>
+              <button
+                onClick={() => {
+                  if (announcements[0]) setSelectedAnnouncement(announcements[0]);
+                }}
+                className="text-xs uppercase tracking-widest font-semibold text-bronze-600 hover:text-charcoal-950 flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>View Latest Bulletin</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button
-              onClick={() => {
-                if (announcements[0]) setSelectedAnnouncement(announcements[0]);
-              }}
-              className="text-xs uppercase tracking-widest font-semibold text-bronze-600 hover:text-charcoal-950 flex items-center gap-1 transition cursor-pointer"
-            >
-              <span>View Latest Bulletin</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
 
-          {/* 4-Card Editorial Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {(announcements.length > 0 ? announcements.slice(0, 4) : []).map(
-              (ann, idx) => (
-                <div
-                  key={ann.announcementId || idx}
-                  onClick={() => setSelectedAnnouncement(ann)}
-                  className="group flex flex-col justify-between bg-cream-50 rounded-2xl overflow-hidden border border-cream-300 cursor-pointer transition hover:shadow-lg h-[440px]"
-                >
-                  <div className="h-48 overflow-hidden img-hover-zoom bg-cream-200">
-                    <img
-                      src={
-                        ann.image ||
-                        'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=800&q=80'
-                      }
-                      alt={ann.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                    />
+            {/* 4-Card Editorial Grid */}
+            {(() => {
+              const activeAnnouncements = announcements
+                .filter((a) => a.status !== 'Archived')
+                .sort((a, b) => {
+                  if (a.announcementId === landingPageConfig?.featuredAnnouncementId) return -1;
+                  if (b.announcementId === landingPageConfig?.featuredAnnouncementId) return 1;
+                  if (a.featured && !b.featured) return -1;
+                  if (!a.featured && b.featured) return 1;
+                  return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
+                })
+                .slice(0, landingPageConfig?.announcementsLimit || 4);
+
+              if (activeAnnouncements.length === 0) {
+                return (
+                  <div className="text-center py-16 bg-cream-50 rounded-2xl border border-cream-200 p-8">
+                    <p className="font-serif text-lg text-charcoal-800">No active circulars at this moment.</p>
+                    <p className="text-xs text-charcoal-800/60 mt-1">Please check back soon for upcoming youth bulletins.</p>
                   </div>
-                  <div className="p-6 flex flex-col justify-between flex-1 space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-[11px] text-bronze-600 font-semibold uppercase tracking-wider">
-                        <span>{ann.location || 'Official Bulletin'}</span>
-                        <span className="text-charcoal-800/60 font-light">
-                          {ann.publishDate || 'Recent'}
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {activeAnnouncements.map((ann, idx) => (
+                    <div
+                      key={ann.announcementId || idx}
+                      onClick={() => setSelectedAnnouncement(ann)}
+                      className="group flex flex-col justify-between bg-cream-50 rounded-2xl overflow-hidden border border-cream-300 cursor-pointer transition hover:shadow-lg h-[440px]"
+                    >
+                      <div className="h-48 overflow-hidden img-hover-zoom bg-cream-200">
+                        <img
+                          src={
+                            ann.image ||
+                            'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=800&q=80'
+                          }
+                          alt={ann.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                        />
+                      </div>
+                      <div className="p-6 flex flex-col justify-between flex-1 space-y-3">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-[11px] text-bronze-600 font-semibold uppercase tracking-wider">
+                            <span>{ann.location || 'Official Bulletin'}</span>
+                            <span className="text-charcoal-800/60 font-light">
+                              {ann.publishDate || 'Recent'}
+                            </span>
+                          </div>
+                          <h4 className="font-serif text-lg text-charcoal-950 font-normal leading-snug line-clamp-2">
+                            {ann.title}
+                          </h4>
+                          <p className="text-charcoal-800 text-xs font-light line-clamp-3 leading-relaxed">
+                            {ann.description}
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center gap-1 text-xs uppercase tracking-wider text-bronze-600 group-hover:text-charcoal-950 font-semibold transition pt-2 border-t border-cream-200">
+                          Read Details <ArrowRight className="w-3 h-3" />
                         </span>
                       </div>
-                      <h4 className="font-serif text-lg text-charcoal-950 font-normal leading-snug line-clamp-2">
-                        {ann.title}
-                      </h4>
-                      <p className="text-charcoal-800 text-xs font-light line-clamp-3 leading-relaxed">
-                        {ann.description}
-                      </p>
                     </div>
-                    <span className="inline-flex items-center gap-1 text-xs uppercase tracking-wider text-bronze-600 group-hover:text-charcoal-950 font-semibold transition pt-2 border-t border-cream-200">
-                      Read Details <ArrowRight className="w-3 h-3" />
-                    </span>
-                  </div>
+                  ))}
                 </div>
-              )
-            )}
+              );
+            })()}
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Dark Footer (Section 9) matching Leagally */}
       <footer id="contact" className="bg-charcoal-950 text-cream-200 pt-20 pb-12">
@@ -862,7 +931,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 <span className="w-1.5 h-1.5 rounded-full bg-bronze-500"></span>
               </div>
               <p className="text-cream-300/70 text-xs font-light leading-relaxed max-w-sm">
-                Members Church of God International Youth Fellowship — CAMANAVA / NCR District 1. Nurturing faith, fellowship, and diligent Christian stewardship across Caloocan, Malabon, Navotas, and Valenzuela.
+                Members Church of God International Youth Fellowship — Local of Ascoville. Nurturing faith, fellowship, and diligent Christian stewardship among our youth brethren.
               </p>
               <div className="pt-2 text-xs text-cream-300/50 font-mono">
                 Official Database: Google Sheets (Single Source of Truth)
@@ -877,7 +946,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               <ul className="space-y-2 text-xs font-light text-cream-300/80">
                 <li>
                   <a href="#about" className="hover:text-white transition">
-                    About District
+                    About Locale
                   </a>
                 </li>
                 <li>
@@ -903,27 +972,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </ul>
             </div>
 
-            {/* Locales in District 1 */}
+            {/* Locale Ministries & Committees */}
             <div className="lg:col-span-3 space-y-4">
               <h5 className="text-xs uppercase tracking-widest font-semibold text-bronze-400">
-                District 1 Locales
+                Locale Ministries & Committees
               </h5>
               <ul className="space-y-2 text-xs font-light text-cream-300/80">
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Caloocan Division (North & South)
+                  Youth Choir & Music Ministry
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Malabon Locale Coordinating Centers
+                  Teatro Kristiano & Creative Arts
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Navotas Coastal Chapter
+                  Secretariat & Attendance Records
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Valenzuela Eastern & Western Sectors
+                  Charity, Community & Outreach Volunteers
                 </li>
               </ul>
             </div>
@@ -934,7 +1003,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 Administration
               </h5>
               <p className="text-xs font-light text-cream-300/70">
-                Are you a designated youth officer, committee head, or district administrator?
+                Are you a designated youth officer, committee head, or locale administrator?
               </p>
               <button
                 onClick={() => setIsAdminLoginOpen(true)}
@@ -949,7 +1018,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
           {/* Bottom Bar */}
           <div className="pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-cream-300/60 font-light gap-4">
             <p>
-              &copy; {new Date().getFullYear()} MCGI Youth CAMANAVA / NCR District 1. To God Be The Glory.
+              &copy; {new Date().getFullYear()} MCGI Youth Local of Ascoville. To God Be The Glory.
             </p>
             <div className="flex items-center space-x-6">
               <span className="hover:text-cream-200">

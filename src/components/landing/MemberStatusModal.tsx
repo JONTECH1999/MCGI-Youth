@@ -53,7 +53,7 @@ export const MemberStatusModal: React.FC<MemberStatusModalProps> = ({
       case 'Active':
         return {
           title: 'Active Community Member',
-          text: 'You maintain active attendance in our district gatherings. Check out the upcoming events below to keep your attendance rate strong!',
+          text: 'You maintain active attendance in our locale gatherings. Check out the upcoming events below to keep your attendance rate strong!',
           color: 'blue',
           border: 'border-blue-200',
           bg: 'bg-blue-50/80',

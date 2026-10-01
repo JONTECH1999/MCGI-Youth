@@ -8,6 +8,7 @@ import { Announcement } from '../types/announcement';
 import { LandingPageConfig } from '../types/landingPage';
 import { StorageService } from '../services/storageService';
 import { GasApiService, GasApiResponse } from '../services/gasApi';
+import { StatsService } from '../services/statsService';
 import { AttendanceService } from '../services/attendanceService';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
 import { useAuth } from './AuthContext';
@@ -35,6 +36,7 @@ interface AppDataContextType {
   syncFromGoogleSheets: () => Promise<{ success: boolean; message: string }>;
   testConnection: (urlOverride?: string) => Promise<GasApiResponse>;
   initGoogleSheets: () => Promise<GasApiResponse>;
+  pushAllToGoogleSheets: () => Promise<GasApiResponse>;
 
   // Members
   saveMember: (member: Member) => Promise<{ success: boolean; message: string }>;
@@ -230,6 +232,85 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
    */
   const initGoogleSheets = async (): Promise<GasApiResponse> => {
     return GasApiService.initializeSpreadsheet();
+  };
+
+  /**
+   * Push All Web App Data to Google Sheets (Members, Events, Schedules, Attendance, Announcements, Summary)
+   */
+  const pushAllToGoogleSheets = async (): Promise<GasApiResponse> => {
+    if (!GasApiService.isConfigured()) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured or does not end in /exec.' };
+    }
+
+    setIsSyncing(true);
+    try {
+      const summaryData = StatsService.generateOfficialSummaryData(members);
+      const res = await GasApiService.pushAllData({
+        members,
+        events,
+        schedules,
+        attendance,
+        announcements,
+        settings,
+        officialSummary: summaryData,
+      });
+
+      if (res.success) {
+        setConnectionStatus('Connected');
+        setConnectionError(undefined);
+        const syncTime = new Date().toISOString();
+        setLastSyncTimestamp(syncTime);
+        return res;
+      }
+
+      // If the deployed Apps Script is an earlier version lacking pushAllData, fallback to individual actions
+      if (res.message && (res.message.includes('pushAllData') || res.message.includes('Unknown POST action'))) {
+        // 1. Initialize worksheets & headers
+        await GasApiService.initializeSpreadsheet();
+
+        // 2. Format & populate Official Summary
+        await GasApiService.pushOfficialSummary(summaryData);
+
+        // 3. Batch save attendance
+        if (attendance && attendance.length > 0) {
+          await GasApiService.saveAttendanceBatch(attendance);
+        }
+
+        // 4. Save events & schedules
+        for (const evt of events) {
+          await GasApiService.saveEvent(evt);
+        }
+        for (const sch of schedules) {
+          await GasApiService.saveSchedule(sch);
+        }
+
+        // 5. Save all members
+        for (const mem of members) {
+          await GasApiService.postAction('saveMember', mem);
+        }
+
+        // 6. Save announcements
+        for (const ann of announcements) {
+          await GasApiService.saveAnnouncement(ann);
+        }
+
+        const syncTime = new Date().toISOString();
+        setLastSyncTimestamp(syncTime);
+        setConnectionStatus('Connected');
+        setConnectionError(undefined);
+
+        return {
+          success: true,
+          message: `Successfully uploaded ${members.length} members, ${attendance.length} attendance records, and Official Summary table to Google Sheets via multi-stage push!`,
+        };
+      }
+
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'Failed to push data to Google Sheets.' };
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   /**
@@ -759,6 +840,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         syncFromGoogleSheets,
         testConnection,
         initGoogleSheets,
+        pushAllToGoogleSheets,
         saveMember,
         archiveMember,
         deleteMember,

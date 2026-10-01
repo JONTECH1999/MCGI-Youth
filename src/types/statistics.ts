@@ -21,13 +21,21 @@ export interface MembershipStatistics {
     onAndOffSuspended: number;
     inactiveRfa: number;
   };
+  bilangNgNapatawad: number;
   missing: number;
+  nbbYouth: {
+    overallTotal: number;
+    june: number;
+    july: number;
+    august: number;
+    quarterLabel: string;
+  };
 }
 
 export interface DemographicStatistics {
   age: {
-    junior: number;
-    senior: number;
+    junior: number; // 14 to 24 years old
+    senior: number; // 25 years old & above
   };
   education: {
     totalStudents: number;
@@ -39,7 +47,7 @@ export interface DemographicStatistics {
     notWorking: number;
   };
   voting: {
-    registeredVoters: number;
+    registeredVoters: number; // 18 years and above
     notRegistered: number;
   };
   parentStatus: {
@@ -49,6 +57,8 @@ export interface DemographicStatistics {
     unbaptizedParents: number;
   };
   committees: { [committeeName: string]: number };
+  withCommitteeTotal: number;
+  withoutCommitteeTotal: number;
   multipleCommitteesCount: number;
 }
 

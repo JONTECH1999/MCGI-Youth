@@ -2,9 +2,20 @@ import { Member } from '../types/member';
 import { AttendanceRecord } from '../types/attendance';
 import { AttendanceEvent } from '../types/event';
 import { DemographicStatistics, MembershipStatistics, AttendanceAnalytics } from '../types/statistics';
-import { OFFICIAL_COMMITTEES } from '../data/sampleCommittees';
+import { OFFICIAL_COMMITTEES, normalizeCommitteeName } from '../data/sampleCommittees';
 
 export const StatsService = {
+  /**
+   * Helper: check if member belongs to Junior bracket (14 to 24 years old)
+   * or Senior bracket (25 years old & above)
+   */
+  isJuniorAge(m: Member): boolean {
+    if (m.age !== undefined && m.age > 0) {
+      return m.age >= 14 && m.age <= 24;
+    }
+    return m.memberCategory === 'Junior';
+  },
+
   /**
    * Calculate live Membership Statistics conforming to official MCGI Youth reporting format
    */
@@ -15,12 +26,21 @@ export const StatsService = {
       onAndOff: { total: 0, junior: 0, senior: 0 },
       inactive: { total: 0, junior: 0, senior: 0 },
       suspended: { total: 0, activeSuspended: 0, onAndOffSuspended: 0, inactiveRfa: 0 },
+      bilangNgNapatawad: 0,
       missing: 0,
+      nbbYouth: {
+        overallTotal: 0,
+        june: 0,
+        july: 0,
+        august: 0,
+        quarterLabel: '2nd Quarter',
+      },
     };
 
     members.forEach((m) => {
-      const isJunior = m.memberCategory === 'Junior' || (m.age > 0 && m.age < 18);
+      const isJunior = this.isJuniorAge(m);
 
+      // Membership Status Breakdown
       switch (m.membershipStatus) {
         case 'Active':
           stats.active.total++;
@@ -42,10 +62,9 @@ export const StatsService = {
 
         case 'Suspended':
           stats.suspended.total++;
-          // Categorize suspended types
-          if (m.activityStatus === 'Active' || m.activityStatus === 'Regular') {
+          if (m.suspensionCategory === 'Active Suspended' || m.activityStatus === 'Active' || m.activityStatus === 'Regular') {
             stats.suspended.activeSuspended++;
-          } else if (m.activityStatus === 'At Risk') {
+          } else if (m.suspensionCategory === 'On & Off Suspended' || m.activityStatus === 'At Risk') {
             stats.suspended.onAndOffSuspended++;
           } else {
             stats.suspended.inactiveRfa++;
@@ -55,6 +74,35 @@ export const StatsService = {
         case 'Missing':
           stats.missing++;
           break;
+      }
+
+      // Bilang ng Napatawad (Restored / Forgiven)
+      if (m.isForgiven || (m.notes && m.notes.toLowerCase().includes('napatawad'))) {
+        stats.bilangNgNapatawad++;
+      }
+
+      // NBB Youth (Newly Baptized Brethren - 2nd Quarter: June, July, August)
+      const isNbb =
+        m.isNBB ||
+        (m.notes && m.notes.toLowerCase().includes('nbb')) ||
+        (m.baptismDate && (m.baptismDate.includes('-06-') || m.baptismDate.includes('-07-') || m.baptismDate.includes('-08-'))) ||
+        (m.dateRegistered && (m.dateRegistered.includes('-06-') || m.dateRegistered.includes('-07-') || m.dateRegistered.includes('-08-')));
+
+      if (isNbb) {
+        stats.nbbYouth.overallTotal++;
+        const targetDate = m.baptismDate || m.dateRegistered || '';
+        const monthNum = targetDate ? new Date(targetDate).getMonth() : -1;
+        const nbbMonth = m.nbbMonth ? m.nbbMonth.toLowerCase() : '';
+
+        if (nbbMonth === 'june' || monthNum === 5) {
+          stats.nbbYouth.june++;
+        } else if (nbbMonth === 'july' || monthNum === 6) {
+          stats.nbbYouth.july++;
+        } else if (nbbMonth === 'august' || monthNum === 7) {
+          stats.nbbYouth.august++;
+        } else {
+          stats.nbbYouth.june++;
+        }
       }
     });
 
@@ -72,17 +120,19 @@ export const StatsService = {
       voting: { registeredVoters: 0, notRegistered: 0 },
       parentStatus: { bothParents: 0, motherOnly: 0, fatherOnly: 0, unbaptizedParents: 0 },
       committees: {},
+      withCommitteeTotal: 0,
+      withoutCommitteeTotal: 0,
       multipleCommitteesCount: 0,
     };
 
-    // Initialize committee counts
+    // Initialize all official committees with 0
     OFFICIAL_COMMITTEES.forEach((c) => {
       stats.committees[c] = 0;
     });
 
     members.forEach((m) => {
-      // Age Category
-      if (m.memberCategory === 'Junior' || (m.age > 0 && m.age < 18)) {
+      // Age Category (Junior: 14 to 24, Senior: 25 and above)
+      if (this.isJuniorAge(m)) {
         stats.age.junior++;
       } else {
         stats.age.senior++;
@@ -106,14 +156,15 @@ export const StatsService = {
         stats.employment.notWorking++;
       }
 
-      // Voting
-      if (m.registeredVoter) {
+      // Registered Voters (18 years old & above)
+      const isAdult = m.age !== undefined && m.age > 0 ? m.age >= 18 : m.memberCategory === 'Senior';
+      if (m.registeredVoter && isAdult) {
         stats.voting.registeredVoters++;
       } else {
         stats.voting.notRegistered++;
       }
 
-      // Parent Status
+      // Parent Baptism Status
       switch (m.parentBaptismStatus) {
         case 'Both Mother & Father':
           stats.parentStatus.bothParents++;
@@ -129,18 +180,19 @@ export const StatsService = {
           break;
       }
 
-      // Committees (Member can have multiple committees, do not double count member)
-      if (Array.isArray(m.committees)) {
-        if (m.committees.length > 1) {
+      // Committees breakdown
+      const memberCommittees = Array.isArray(m.committees) ? m.committees : [];
+      if (memberCommittees.length > 0) {
+        stats.withCommitteeTotal++;
+        if (memberCommittees.length > 1) {
           stats.multipleCommitteesCount++;
         }
-        m.committees.forEach((comm) => {
-          if (stats.committees[comm] !== undefined) {
-            stats.committees[comm]++;
-          } else {
-            stats.committees[comm] = (stats.committees[comm] || 0) + 1;
-          }
+        memberCommittees.forEach((comm) => {
+          const canonical = normalizeCommitteeName(comm);
+          stats.committees[canonical] = (stats.committees[canonical] || 0) + 1;
         });
+      } else {
+        stats.withoutCommitteeTotal++;
       }
     });
 
@@ -158,7 +210,6 @@ export const StatsService = {
   ): AttendanceAnalytics {
     const todayStr = new Date().toISOString().split('T')[0];
 
-    // Filter by date range if specified
     const filteredRecords = records.filter((r) => {
       if (dateFilter === 'all') return true;
       if (dateFilter === 'today') return r.eventDate === todayStr;
@@ -215,7 +266,6 @@ export const StatsService = {
     const totalQualifying = presentCount + absentCount + lateCount;
     const overallRate = totalQualifying > 0 ? Math.round(((presentCount + lateCount) / totalQualifying) * 1000) / 10 : 0;
 
-    // Trend chronologically
     const trend = Object.keys(dateMap)
       .sort()
       .map((dateStr) => {
@@ -233,7 +283,6 @@ export const StatsService = {
         };
       });
 
-    // By Event Type
     const eventTypeMap: { [type: string]: { count: number; present: number } } = {};
     filteredRecords.forEach((rec) => {
       const ev = events.find((e) => e.eventId === rec.eventId);
@@ -256,7 +305,6 @@ export const StatsService = {
       };
     });
 
-    // Count At Risk and Inactive members
     const atRiskCount = members.filter((m) => m.activityStatus === 'At Risk').length;
     const inactiveCount = members.filter((m) => m.activityStatus === 'Inactive' || m.membershipStatus === 'Inactive').length;
 
@@ -277,7 +325,6 @@ export const StatsService = {
 
   /**
    * Baseline sample metrics from the official historical MCGI Youth report
-   * (for comparative view and demonstration prior to full data sync)
    */
   getOfficialSampleBaseline(): {
     membership: MembershipStatistics;
@@ -290,7 +337,15 @@ export const StatsService = {
         onAndOff: { total: 230, junior: 140, senior: 90 },
         inactive: { total: 151, junior: 85, senior: 66 },
         suspended: { total: 79, activeSuspended: 42, onAndOffSuspended: 25, inactiveRfa: 12 },
+        bilangNgNapatawad: 14,
         missing: 397,
+        nbbYouth: {
+          overallTotal: 48,
+          june: 18,
+          july: 15,
+          august: 15,
+          quarterLabel: '2nd Quarter',
+        },
       },
       demographics: {
         age: { junior: 1511, senior: 1138 },
@@ -299,8 +354,6 @@ export const StatsService = {
         voting: { registeredVoters: 46, notRegistered: 2603 },
         parentStatus: { bothParents: 50, motherOnly: 820, fatherOnly: 616, unbaptizedParents: 1163 },
         committees: {
-          'Music Ministry': 312,
-          'Teatro Kristiano': 195,
           'Artist Guild': 84,
           'Broadcast': 120,
           'Core Group': 45,
@@ -308,16 +361,79 @@ export const StatsService = {
           'Guest Coordinators': 210,
           'LKD': 160,
           'MCGI Bible Readers': 175,
-          'Officers': 68,
+          'Music Ministry': 312,
+          'NAR': 115,
+          'Officers (Youth, GS, Locale/District)': 68,
           'Photoville': 94,
           'RACS': 88,
           'Servants Ministry': 230,
-          'T.O.C.': 76,
-          'NAR': 115,
+          'Teatro Kristiano': 195,
+          'T.O.C. (Thanksgiving Committee)': 76,
           'Others': 180,
         },
+        withCommitteeTotal: 2224,
+        withoutCommitteeTotal: 425,
         multipleCommitteesCount: 425,
       },
     };
+  },
+
+  /**
+   * Generate official 48-column summary array conforming to official MCGI Youth reporting format
+   */
+  generateOfficialSummaryData(members: Member[]): (string | number)[] {
+    const mem = this.calculateMembershipStatistics(members);
+    const demo = this.calculateDemographicStatistics(members);
+
+    return [
+      mem.totalRegisteredMembers,
+      mem.active.total,
+      mem.active.junior,
+      mem.active.senior,
+      mem.onAndOff.total,
+      mem.onAndOff.junior,
+      mem.onAndOff.senior,
+      mem.inactive.total,
+      mem.inactive.junior,
+      mem.inactive.senior,
+      mem.suspended.total,
+      mem.suspended.activeSuspended,
+      mem.suspended.onAndOffSuspended,
+      mem.suspended.inactiveRfa,
+      mem.bilangNgNapatawad,
+      mem.missing,
+      mem.nbbYouth.overallTotal,
+      mem.nbbYouth.june,
+      mem.nbbYouth.july,
+      mem.nbbYouth.august,
+      demo.withCommitteeTotal,
+      demo.multipleCommitteesCount,
+      demo.committees['Artist Guild'] || 0,
+      demo.committees['Broadcast'] || 0,
+      demo.committees['Core Group'] || 0,
+      demo.committees['MCGI DRRT'] || 0,
+      demo.committees['Guest Coordinators'] || 0,
+      demo.committees['LKD'] || 0,
+      demo.committees['MCGI Bible Readers'] || 0,
+      demo.committees['Music Ministry'] || 0,
+      demo.committees['NAR'] || 0,
+      demo.committees['Officers (Youth, GS, Locale/District)'] || 0,
+      demo.committees['Photoville'] || 0,
+      demo.committees['RACS'] || 0,
+      demo.committees['Servants Ministry'] || 0,
+      demo.committees['Teatro Kristiano'] || 0,
+      demo.committees['T.O.C. (Thanksgiving Committee)'] || 0,
+      demo.committees['Others'] || 0,
+      demo.withoutCommitteeTotal,
+      demo.education.totalStudents,
+      demo.employment.youthWithWork,
+      demo.voting.registeredVoters,
+      demo.education.workingStudents,
+      demo.education.outOfSchoolYouth,
+      demo.parentStatus.motherOnly,
+      demo.parentStatus.fatherOnly,
+      demo.parentStatus.bothParents,
+      demo.parentStatus.unbaptizedParents,
+    ];
   },
 };

@@ -38,6 +38,12 @@ export interface Member {
   activityStatus: ActivityStatus;
   activityReason?: string; // e.g., "Missed 4 of the last 5 qualifying events."
   notes?: string;
+  suspensionCategory?: 'Active Suspended' | 'On & Off Suspended' | 'Inactive / RFA';
+  isForgiven?: boolean; // Bilang ng Napatawad
+  isNBB?: boolean; // Newly Baptized Brethren (NBB Youth)
+  nbbMonth?: 'June' | 'July' | 'August' | string;
+  nbbQuarter?: string;
+  baptismDate?: string;
   createdAt: string;
   updatedAt: string;
 }

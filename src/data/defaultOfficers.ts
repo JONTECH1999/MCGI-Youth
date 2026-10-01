@@ -20,7 +20,7 @@ export const INITIAL_OFFICERS: OfficerAccount[] = [
     fullName: 'Officer Aljon Navarro',
     role: 'ADMIN',
     email: 'aljon.navarro@ascoville.org',
-    title: 'District Youth Executive / Head Admin',
+    title: 'Ascoville Youth Executive / Head Admin',
     passkey: '1234',
     status: 'Active',
     createdAt: '2026-01-01T08:00:00Z',

@@ -95,7 +95,7 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
             Youth Officer Portal
           </h1>
           <p className="text-xs text-slate-400 max-w-sm mx-auto">
-            {landingPageConfig?.chapterName || 'MCGI YOUTH • CAMANAVA / NCR DISTRICT 1'}
+            {landingPageConfig?.chapterName || 'MCGI YOUTH • LOCAL OF ASCOVILLE'}
           </p>
         </div>
 

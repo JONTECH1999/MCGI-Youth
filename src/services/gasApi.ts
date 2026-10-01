@@ -28,19 +28,33 @@ export const GasApiService = {
   },
 
   /**
-   * Ping / Test Connection
+   * Ping / Test Connection with smart diagnostics
    */
   async testConnection(urlOverride?: string): Promise<GasApiResponse> {
-    const url = urlOverride || this.getApiUrl();
-    if (!url) {
+    const rawUrl = (urlOverride || this.getApiUrl() || '').trim();
+    if (!rawUrl) {
       return {
         success: false,
         message: 'No Google Apps Script Web App URL provided.',
       };
     }
 
+    if (rawUrl.includes('docs.google.com/spreadsheets')) {
+      return {
+        success: false,
+        message: 'Spreadsheet URL detected instead of Apps Script Web App URL! You must open Extensions > Apps Script > Deploy > New deployment > Web app, and paste the Web App URL that ends in /exec.',
+      };
+    }
+
+    if (!rawUrl.includes('/exec')) {
+      return {
+        success: false,
+        message: 'Invalid Web App URL. The URL must end with /exec (e.g. https://script.google.com/macros/s/.../exec).',
+      };
+    }
+
     try {
-      const pingUrl = `${url}${url.includes('?') ? '&' : '?'}action=ping`;
+      const pingUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}action=ping`;
       const response = await fetch(pingUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -54,9 +68,13 @@ export const GasApiService = {
       return json;
     } catch (err: any) {
       console.warn('Google Apps Script connection test error:', err);
+      let msg = err.message || 'Failed to connect to Google Apps Script Web App.';
+      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
+        msg = 'Connection blocked (Failed to fetch). Crucial check: In Google Apps Script, make sure your deployment has "Who has access" set to "Anyone". If set to "Only myself", Google blocks all browser connections!';
+      }
       return {
         success: false,
-        message: err.message || 'Failed to connect to Google Apps Script Web App.',
+        message: msg,
       };
     }
   },
@@ -110,8 +128,14 @@ export const GasApiService = {
   async postAction<T = any>(action: string, data: any): Promise<GasApiResponse<T>> {
     const url = this.getApiUrl();
 
-    // If not configured, seamlessly queue in storage service
+    // If not configured
     if (!this.isConfigured()) {
+      if (['initSpreadsheet', 'pushAllData', 'saveOfficialSummary'].includes(action)) {
+        return {
+          success: false,
+          message: 'Google Apps Script URL is not configured or does not end in /exec.',
+        };
+      }
       StorageService.addToSyncQueue(action, data);
       return {
         success: true,
@@ -136,10 +160,20 @@ export const GasApiService = {
       const json: GasApiResponse<T> = await response.json();
       return json;
     } catch (err: any) {
-      console.warn(`GAS POST failed for action ${action}, queuing for offline sync:`, err);
+      console.warn(`GAS POST failed for action ${action}:`, err);
+      let errMsg = err.message || 'Network error communicating with Google Sheets.';
+      if (errMsg.includes('Failed to fetch')) {
+        errMsg = 'Failed to reach Google Sheets (Failed to fetch). Check if Apps Script is deployed with "Who has access: Anyone", or run initializeSpreadsheetStructure directly in Apps Script editor.';
+      }
+      if (['initSpreadsheet', 'pushAllData', 'saveOfficialSummary'].includes(action)) {
+        return {
+          success: false,
+          message: errMsg,
+        };
+      }
       StorageService.addToSyncQueue(action, data);
       return {
-        success: true, // Gracefully processed locally
+        success: true, // Gracefully processed locally for background edits
         message: 'Saved locally. Queued for background synchronization when connection restores.',
       };
     }
@@ -254,5 +288,27 @@ export const GasApiService = {
    */
   async initializeSpreadsheet(): Promise<GasApiResponse> {
     return this.postAction('initSpreadsheet', {});
+  },
+
+  /**
+   * Push Official MCGI Youth Membership Statistics & Demographics Summary
+   */
+  async pushOfficialSummary(summaryData: any): Promise<GasApiResponse> {
+    return this.postAction('saveOfficialSummary', summaryData);
+  },
+
+  /**
+   * Bulk Push all current application data into Google Sheets
+   */
+  async pushAllData(payload: {
+    members: Member[];
+    events: AttendanceEvent[];
+    schedules: EventSchedule[];
+    attendance: AttendanceRecord[];
+    announcements: Announcement[];
+    settings?: SystemSettings;
+    officialSummary?: any;
+  }): Promise<GasApiResponse> {
+    return this.postAction('pushAllData', payload);
   }
 };

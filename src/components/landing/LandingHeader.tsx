@@ -96,7 +96,7 @@ export const LandingHeader: React.FC<LandingHeaderProps> = ({
                 </span>
               </div>
               <p className="text-[11px] font-medium text-stone-500 uppercase tracking-wider">
-                {chapterName || 'CAMANAVA / NCR DISTRICT 1'}
+                {chapterName || 'MCGI YOUTH • LOCAL OF ASCOVILLE'}
               </p>
             </div>
           </div>

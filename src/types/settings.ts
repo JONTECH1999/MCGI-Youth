@@ -20,7 +20,16 @@ export interface GoogleSheetsConfig {
   lastError?: string;
 }
 
+export interface CommitteeSettingItem {
+  id: string;
+  name: string;
+  alias?: string;
+  description?: string;
+  isActive: boolean;
+}
+
 export interface SystemSettings {
   attendanceRules: AttendanceRules;
   googleSheets: GoogleSheetsConfig;
+  committees?: CommitteeSettingItem[];
 }

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Member, MembershipStatus, MemberCategory, StudentStatus, EmploymentStatus, ParentBaptismStatus } from '../../types/member';
 import { Modal } from '../common/Modal';
-import { OFFICIAL_COMMITTEES } from '../../data/sampleCommittees';
+import { OFFICIAL_COMMITTEES, COMMITTEE_METADATA } from '../../data/sampleCommittees';
+import { useAppData } from '../../context/AppDataContext';
+import { CheckCircle2, ShieldAlert, Sparkles, Heart } from 'lucide-react';
 
 interface MemberFormModalProps {
   isOpen: boolean;
@@ -18,7 +20,16 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
   initialMember,
   existingMemberIds,
 }) => {
+  const { settings } = useAppData();
   const isEditing = Boolean(initialMember);
+
+  // Active committees list from settings or default
+  const availableCommittees = React.useMemo(() => {
+    if (settings?.committees && settings.committees.length > 0) {
+      return settings.committees.filter((c) => c.isActive).map((c) => c.name);
+    }
+    return OFFICIAL_COMMITTEES as unknown as string[];
+  }, [settings?.committees]);
 
   const [formData, setFormData] = useState<Partial<Member>>({
     memberId: '',
@@ -32,7 +43,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
     email: '',
     address: '',
     membershipStatus: 'Active',
-    memberCategory: 'Senior',
+    memberCategory: 'Junior',
     studentStatus: 'Student',
     employmentStatus: 'Unemployed',
     registeredVoter: false,
@@ -42,6 +53,12 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
     committees: [],
     dateRegistered: new Date().toISOString().split('T')[0],
     notes: '',
+    suspensionCategory: undefined,
+    isForgiven: false,
+    isNBB: false,
+    nbbMonth: 'June',
+    nbbQuarter: '2nd Quarter',
+    baptismDate: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -49,9 +66,14 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
 
   useEffect(() => {
     if (initialMember) {
-      setFormData({ ...initialMember });
+      setFormData({
+        ...initialMember,
+        isForgiven: initialMember.isForgiven ?? (initialMember.notes?.toLowerCase().includes('napatawad') || false),
+        isNBB: initialMember.isNBB ?? (initialMember.notes?.toLowerCase().includes('nbb') || false),
+        nbbMonth: initialMember.nbbMonth || 'June',
+        nbbQuarter: initialMember.nbbQuarter || '2nd Quarter',
+      });
     } else {
-      // Auto-generate new ID
       const nextNum = Math.floor(1000 + Math.random() * 9000);
       setFormData({
         memberId: `M-${nextNum}`,
@@ -65,7 +87,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
         email: '',
         address: '',
         membershipStatus: 'Active',
-        memberCategory: 'Senior',
+        memberCategory: 'Junior',
         studentStatus: 'Student',
         employmentStatus: 'Unemployed',
         registeredVoter: false,
@@ -75,12 +97,19 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
         committees: [],
         dateRegistered: new Date().toISOString().split('T')[0],
         notes: '',
+        suspensionCategory: undefined,
+        isForgiven: false,
+        isNBB: false,
+        nbbMonth: 'June',
+        nbbQuarter: '2nd Quarter',
+        baptismDate: '',
       });
     }
     setErrors({});
   }, [initialMember, isOpen]);
 
-  // Birthday calculation
+  // Birthday calculation with official MCGI Youth brackets:
+  // Junior: 14 to 24 years old; Senior: 25 years old & above
   const handleBirthdayChange = (bday: string) => {
     if (!bday) {
       setFormData((prev) => ({ ...prev, birthday: bday }));
@@ -89,7 +118,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
     const birthYear = new Date(bday).getFullYear();
     const currentYear = new Date().getFullYear();
     const calcAge = Math.max(0, currentYear - birthYear);
-    const suggestedCategory: MemberCategory = calcAge < 18 ? 'Junior' : 'Senior';
+    const suggestedCategory: MemberCategory = calcAge <= 24 ? 'Junior' : 'Senior';
 
     setFormData((prev) => ({
       ...prev,
@@ -170,6 +199,12 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
       activityStatus: initialMember?.activityStatus || 'Active',
       activityReason: initialMember?.activityReason,
       notes: formData.notes || '',
+      suspensionCategory: formData.membershipStatus === 'Suspended' ? (formData.suspensionCategory || 'Active Suspended') : undefined,
+      isForgiven: Boolean(formData.isForgiven),
+      isNBB: Boolean(formData.isNBB),
+      nbbMonth: formData.isNBB ? formData.nbbMonth : undefined,
+      nbbQuarter: formData.isNBB ? formData.nbbQuarter : undefined,
+      baptismDate: formData.baptismDate || undefined,
       createdAt: initialMember?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -189,7 +224,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title={isEditing ? 'Edit Youth Member Record' : 'Register New Youth Member'}
-      subtitle="Complete information will synchronize with Google Sheets MEMBERS tab"
+      subtitle="Complete profile will synchronize directly with Google Sheets MEMBERS tab"
       maxWidth="2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -236,18 +271,39 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Category *
+              Category (Age Bracket) *
             </label>
             <select
               value={formData.memberCategory}
               onChange={(e) => setFormData({ ...formData, memberCategory: e.target.value as any })}
               className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-xs font-semibold text-slate-800 shadow-2xs focus:border-blue-500 focus:outline-hidden"
             >
-              <option value="Junior">Junior (&lt;18)</option>
-              <option value="Senior">Senior (18+)</option>
+              <option value="Junior">Junior (14 to 24 yrs old)</option>
+              <option value="Senior">Senior (25 yrs old & above)</option>
             </select>
           </div>
         </div>
+
+        {/* Conditional Suspended Classification */}
+        {formData.membershipStatus === 'Suspended' && (
+          <div className="p-3 bg-purple-50/70 border border-purple-200 rounded-xl space-y-1 animate-fade-in">
+            <label className="block text-xs font-bold text-purple-900">
+              Suspension Classification (Required for Official Reporting) *
+            </label>
+            <p className="text-[11px] text-purple-700">
+              Classify member under the official MCGI Youth suspended sub-breakdown:
+            </p>
+            <select
+              value={formData.suspensionCategory || 'Active Suspended'}
+              onChange={(e) => setFormData({ ...formData, suspensionCategory: e.target.value as any })}
+              className="w-full sm:w-1/2 rounded-lg border border-purple-300 bg-white py-1.5 px-3 text-xs font-bold text-purple-900 focus:border-purple-600 focus:outline-hidden"
+            >
+              <option value="Active Suspended">Active Suspended</option>
+              <option value="On & Off Suspended">On & Off Suspended</option>
+              <option value="Inactive / RFA">Inactive / RFA</option>
+            </select>
+          </div>
+        )}
 
         {/* Names */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -310,7 +366,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Age
+              Age ({formData.age && formData.age <= 24 ? 'Junior: 14-24' : 'Senior: 25+'})
             </label>
             <input
               type="number"
@@ -322,7 +378,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
                 setFormData({
                   ...formData,
                   age: a,
-                  memberCategory: a < 18 ? 'Junior' : 'Senior',
+                  memberCategory: a <= 24 ? 'Junior' : 'Senior',
                 });
               }}
               className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-xs shadow-2xs focus:border-blue-500 focus:outline-hidden"
@@ -380,7 +436,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
               type="text"
               value={formData.address || ''}
               onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="Street, Barangay, City/Municipality"
+              placeholder="Street, Barangay, City / Local of Ascoville"
               className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-xs shadow-2xs focus:border-blue-500 focus:outline-hidden"
             />
           </div>
@@ -416,7 +472,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Parent Baptism</label>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1">Parent Baptism Status</label>
               <select
                 value={formData.parentBaptismStatus}
                 onChange={(e) => setFormData({ ...formData, parentBaptismStatus: e.target.value as any })}
@@ -439,7 +495,7 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
                 onChange={(e) => setFormData({ ...formData, registeredVoter: e.target.checked })}
                 className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>Registered Voter</span>
+              <span>Registered Voter (18 yrs & above)</span>
             </label>
 
             <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
@@ -464,30 +520,112 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
           </div>
         </div>
 
+        {/* Special Reporting Tags: Bilang ng Napatawad & NBB Youth */}
+        <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/80 space-y-3">
+          <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+            <span>Special Status: Restored & Newly Baptized Brethren</span>
+          </h4>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            {/* Napatawad Checkbox */}
+            <div className="p-2.5 bg-white rounded-lg border border-amber-200">
+              <label className="inline-flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.isForgiven}
+                  onChange={(e) => setFormData({ ...formData, isForgiven: e.target.checked })}
+                  className="mt-0.5 rounded border-amber-300 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <span className="font-bold text-slate-900 flex items-center gap-1">
+                    <Heart className="w-3.5 h-3.5 text-emerald-600 inline" />
+                    Bilang ng Napatawad
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Check if member is forgiven / restored into active spiritual fellowship.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            {/* NBB Youth Checkbox */}
+            <div className="p-2.5 bg-white rounded-lg border border-amber-200">
+              <label className="inline-flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={formData.isNBB}
+                  onChange={(e) => setFormData({ ...formData, isNBB: e.target.checked })}
+                  className="mt-0.5 rounded border-amber-300 text-blue-600 focus:ring-blue-500"
+                />
+                <div>
+                  <span className="font-bold text-slate-900 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 inline" />
+                    NBB Youth (Newly Baptized)
+                  </span>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Newly Baptized Brethren for official quarter reporting.
+                  </p>
+                </div>
+              </label>
+
+              {formData.isNBB && (
+                <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
+                  <span className="text-[11px] font-semibold text-slate-600">Month:</span>
+                  <select
+                    value={formData.nbbMonth || 'June'}
+                    onChange={(e) => setFormData({ ...formData, nbbMonth: e.target.value })}
+                    className="rounded border border-slate-300 bg-white py-1 px-2 text-xs font-bold text-blue-800"
+                  >
+                    <option value="June">June</option>
+                    <option value="July">July</option>
+                    <option value="August">August</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
         {/* Committees Multi-Select */}
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-            Committees (A member may belong to multiple committees)
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-3 rounded-xl border border-slate-200 bg-white max-h-40 overflow-y-auto">
-            {OFFICIAL_COMMITTEES.map((comm) => {
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Committees & Ministries Assignment
+            </label>
+            <span className="text-[11px] text-slate-500">
+              Selected: <strong className="text-blue-700">{formData.committees?.length || 0}</strong>
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-500 mb-2">
+            Label member's designated committees (e.g. GCOS, Youth Choir, Teatro Kristiano). Members can belong to multiple committees.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 p-3 rounded-xl border border-slate-200 bg-white max-h-52 overflow-y-auto">
+            {availableCommittees.map((comm) => {
               const isChecked = formData.committees?.includes(comm);
+              const meta = COMMITTEE_METADATA[comm];
+              const displayLabel = meta?.displayLabel || comm;
+
               return (
                 <label
                   key={comm}
-                  className={`flex items-center gap-1.5 p-1.5 rounded-md text-xs cursor-pointer border transition-colors ${
+                  className={`flex items-start gap-2 p-2 rounded-lg text-xs cursor-pointer border transition-all ${
                     isChecked
-                      ? 'bg-blue-50 border-blue-200 text-blue-900 font-semibold'
-                      : 'border-slate-100 hover:bg-slate-50 text-slate-700'
+                      ? 'bg-blue-50/90 border-blue-300 text-blue-950 font-semibold shadow-2xs'
+                      : 'border-slate-200 hover:bg-slate-50 text-slate-700'
                   }`}
                 >
                   <input
                     type="checkbox"
                     checked={isChecked}
                     onChange={() => handleCommitteeToggle(comm)}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="truncate">{comm}</span>
+                  <div className="min-w-0">
+                    <p className="font-semibold leading-tight text-slate-900 truncate">{displayLabel}</p>
+                    <p className="text-[10px] text-slate-500 font-normal line-clamp-1">{meta?.description || 'Locale ministry'}</p>
+                  </div>
                 </label>
               );
             })}
@@ -513,14 +651,14 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={isSubmitting}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
           >
             {isSubmitting ? 'Saving to Database...' : isEditing ? 'Update Member' : 'Register Member'}
           </button>

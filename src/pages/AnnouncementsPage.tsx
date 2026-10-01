@@ -13,6 +13,7 @@ import {
 import { useAppData } from '../context/AppDataContext';
 import { Announcement, AnnouncementStatus } from '../types/announcement';
 import { useAuth } from '../context/AuthContext';
+import { ImageInputControl } from '../components/common/ImageInputControl';
 
 export const AnnouncementsPage: React.FC = () => {
   const { announcements, events, saveAnnouncement, deleteAnnouncement } = useAppData();
@@ -42,12 +43,12 @@ export const AnnouncementsPage: React.FC = () => {
       publishDate: new Date().toISOString().split('T')[0],
       startDisplayDate: new Date().toISOString().split('T')[0],
       endDisplayDate: '',
-      location: 'District Youth Center / Main Chapel',
+      location: 'Ascoville Youth Center / Main Sanctuary',
       eventDate: '',
       linkedEventId: '',
       status: 'Published',
       featured: false,
-      createdBy: user?.fullName || 'District Youth Officer',
+      createdBy: user?.fullName || 'Ascoville Youth Officer',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -304,7 +305,7 @@ export const AnnouncementsPage: React.FC = () => {
                   required
                   value={editingAnnouncement.title}
                   onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, title: e.target.value })}
-                  placeholder="e.g. District Youth Thanksgiving & Praise Gathering"
+                  placeholder="e.g. Ascoville Youth Thanksgiving & Praise Gathering"
                   className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-blue-600 outline-none font-semibold text-slate-900"
                 />
               </div>
@@ -321,18 +322,17 @@ export const AnnouncementsPage: React.FC = () => {
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700 uppercase">Banner / Photo Image URL</label>
-                <input
-                  type="url"
+              <div className="space-y-1 pt-1">
+                <label className="font-bold text-slate-700 uppercase">Banner / Cover Image</label>
+                <ImageInputControl
+                  label="Announcement Banner Image"
+                  sublabel="Upload a photo from your computer or enter an image URL"
                   value={editingAnnouncement.image || ''}
-                  onChange={(e) => setEditingAnnouncement({ ...editingAnnouncement, image: e.target.value })}
-                  placeholder="https://example.com/photo.jpg"
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300 focus:border-blue-600 outline-none"
+                  onChange={(val) => setEditingAnnouncement({ ...editingAnnouncement, image: val })}
+                  aspectRatioClass="aspect-[16/9]"
+                  maxWidth={1200}
+                  maxHeight={800}
                 />
-                <p className="text-[11px] text-slate-400">
-                  Tip: Use high-resolution gathering photos or Unsplash URLs.
-                </p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

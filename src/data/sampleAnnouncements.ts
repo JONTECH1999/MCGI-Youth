@@ -3,7 +3,7 @@ import { Announcement } from '../types/announcement';
 export const SAMPLE_ANNOUNCEMENTS: Announcement[] = [
   {
     announcementId: 'ANN-2026-001',
-    title: 'District Youth Thanksgiving & Praise Gathering',
+    title: 'Ascoville Youth Thanksgiving & Praise Gathering',
     description: 'Join us for our upcoming youth thanksgiving gathering as we offer songs of praises and listen to spiritual topics. All clusters, committees, and guests are warmly welcomed.',
     image: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=80',
     publishDate: '2026-09-20',
@@ -21,12 +21,12 @@ export const SAMPLE_ANNOUNCEMENTS: Announcement[] = [
   {
     announcementId: 'ANN-2026-002',
     title: 'Youth General Assembly & Sports Fellowship',
-    description: 'A special day of camaraderie, team-building, and committee alignment for all junior and senior youth across CAMANAVA District 1.',
+    description: 'A special day of camaraderie, team-building, and committee alignment for all junior and senior youth across the Local of Ascoville.',
     image: 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&fit=crop&w=1200&q=80',
     publishDate: '2026-09-28',
     startDisplayDate: '2026-09-28',
     endDisplayDate: '2026-10-12',
-    location: 'Youth Center Complex & Open Grounds',
+    location: 'Ascoville Youth Center & Grounds',
     eventDate: 'October 10, 2026',
     linkedEventId: 'EVT-2026-004',
     status: 'Published',
@@ -60,7 +60,7 @@ export const SAMPLE_ANNOUNCEMENTS: Announcement[] = [
     publishDate: '2026-09-25',
     startDisplayDate: '2026-09-25',
     endDisplayDate: '2026-10-25',
-    location: 'CAMANAVA District Community Grounds',
+    location: 'Ascoville Community Grounds',
     eventDate: 'October 18, 2026',
     status: 'Published',
     featured: false,
