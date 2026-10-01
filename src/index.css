@@ -1,0 +1,332 @@
+@import "tailwindcss";
+
+@theme {
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+
+  --color-cream-50: #fcfaf7;
+  --color-cream-100: #f5efe6;
+  --color-cream-200: #eee5d8;
+  --color-cream-300: #e0d2bf;
+  --color-cream-400: #cbba9f;
+
+  --color-bronze-400: #b8a183;
+  --color-bronze-500: #a38f73;
+  --color-bronze-600: #8c785c;
+  --color-bronze-700: #6e5d46;
+
+  --color-charcoal-800: #222120;
+  --color-charcoal-900: #181716;
+  --color-charcoal-950: #111010;
+}
+
+@layer base {
+  :root,
+  .theme-beige {
+    --bg-page: #f5efe6;
+    --bg-card: #fcfaf7;
+    --bg-card-subtle: #eee5d8;
+    --border-color: #e0d2bf;
+    --border-subtle: #eee5d8;
+    --text-heading: #111010;
+    --text-body: #181716;
+    --text-muted: #6e5d46;
+    --brand-accent: #a38f73;
+    --brand-accent-hover: #8c785c;
+    --brand-badge-bg: #eee5d8;
+    --brand-badge-text: #6e5d46;
+    --primary: #181716;
+  }
+
+  .theme-slate {
+    --bg-page: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --bg-card-subtle: #F1F5F9;
+    --border-color: #E2E8F0;
+    --border-subtle: #EEF2F6;
+    --text-heading: #0F172A;
+    --text-body: #334155;
+    --text-muted: #64748B;
+    --brand-accent: #2563EB;
+    --brand-accent-hover: #1D4ED8;
+    --brand-badge-bg: #DBEAFE;
+    --brand-badge-text: #1E40AF;
+    --primary: #1E293B;
+  }
+
+  .theme-navy {
+    --bg-page: #F8FAFC;
+    --bg-card: #FFFFFF;
+    --bg-card-subtle: #EEF2F6;
+    --border-color: #CBD5E1;
+    --border-subtle: #E2E8F0;
+    --text-heading: #0F172A;
+    --text-body: #1E293B;
+    --text-muted: #475569;
+    --brand-accent: #1E3A8A;
+    --brand-accent-hover: #172554;
+    --brand-badge-bg: #FEF3C7;
+    --brand-badge-text: #78350F;
+    --primary: #1E3A8A;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #f5efe6;
+    color: #181716;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    overflow-x: hidden;
+  }
+}
+
+/* Mouse Light Spotlight Effect from Template */
+.spotlight {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  transition: background 0.05s ease-out;
+  background: radial-gradient(700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(163, 143, 115, 0.09), transparent 80%);
+}
+
+/* Image hover zoom transition from Template */
+.img-hover-zoom {
+  overflow: hidden;
+}
+.img-hover-zoom img {
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.img-hover-zoom:hover img {
+  transform: scale(1.05);
+}
+
+/* Custom Scrollbar from Template */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f5efe6;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbba9f;
+  border-radius: 4px;
+}
+
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ============================================================
+   ORGANIC COMMUNITY TEXTURES & ANIMATIONS (NOT AI-MADE LOOK)
+   ============================================================ */
+
+/* Organic Sandstone & Paper Texture Pattern */
+.bg-sandstone-grain {
+  background-image: radial-gradient(rgba(180, 83, 9, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+.bg-dark-grain {
+  background-image: radial-gradient(rgba(245, 158, 11, 0.05) 1px, transparent 0);
+  background-size: 20px 20px;
+}
+
+/* Keyframes for Organic Motion */
+@keyframes float-gentle {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-6px) rotate(0.4deg);
+  }
+}
+
+@keyframes float-reverse {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  50% {
+    transform: translateY(6px) rotate(-0.4deg);
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+@keyframes pulse-beacon {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes pulse-amber-beacon {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(217, 119, 6, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(217, 119, 6, 0);
+  }
+}
+
+@keyframes glow-breathe {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.65;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes reveal-up-kf {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Alive Utility Classes */
+.animate-float-gentle {
+  animation: float-gentle 6s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 7s ease-in-out infinite;
+}
+
+.animate-glow-breathe {
+  animation: glow-breathe 4s ease-in-out infinite;
+}
+
+.animate-beacon-green {
+  animation: pulse-beacon 2s infinite;
+}
+
+.animate-beacon-amber {
+  animation: pulse-amber-beacon 2s infinite;
+}
+
+/* Card Hover Elevation with Warm Ambient Bloom */
+.card-alive {
+  transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-alive:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 20px 35px -10px rgba(180, 83, 9, 0.16), 0 8px 16px -6px rgba(0, 0, 0, 0.06);
+}
+
+/* Button Shimmer Sweep effect on hover */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.25) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-150%) skewX(-20deg);
+  pointer-events: none;
+}
+
+.btn-shimmer:hover::after {
+  animation: shimmer-sweep 1.2s ease-in-out;
+}
+
+/* Reading Progress Bar */
+.scroll-progress-line {
+  transform-origin: left center;
+  transition: transform 0.1s linear;
+}
+
+/* Scroll-Driven Animations via Modern CSS */
+@media (prefers-reduced-motion: no-preference) {
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    .scroll-entry-reveal {
+      animation: reveal-up-kf linear both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 25%;
+    }
+  }
+}
+
+/* Fallback class for IntersectionObserver scroll reveal */
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Print optimizations for official reports */
+@media print {
+  aside, nav, .no-print, button {
+    display: none !important;
+  }
+  body, main {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .print-break-inside {
+    break-inside: avoid;
+  }
+}
