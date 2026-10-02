@@ -14,8 +14,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     countingMethod: 'event_level', // Default to event-level attendance, but configurable
   },
   googleSheets: {
-    spreadsheetId: '',
-    appsScriptUrl: '',
+    spreadsheetId: (import.meta.env.VITE_SPREADSHEET_ID as string) || '',
+    appsScriptUrl: (import.meta.env.VITE_APPS_SCRIPT_URL as string) || '',
     connectionStatus: 'Disconnected',
     lastSyncTimestamp: undefined,
   },

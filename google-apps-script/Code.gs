@@ -275,8 +275,8 @@ function getSheetDataAsJson(sheetName) {
  * Save or Update Member
  */
 function saveOrUpdateMember(member) {
-  if (!member.memberId || !member.firstName || !member.lastName) {
-    return { success: false, message: 'Validation error: Member ID, First Name and Last Name are required.' };
+  if (!member.memberId || !member.firstName) {
+    return { success: false, message: 'Validation error: Member ID and First Name are required.' };
   }
 
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -310,8 +310,8 @@ function saveOrUpdateMember(member) {
     member.memberId,
     member.firstName,
     member.middleName || '',
-    member.lastName,
-    member.fullName || (member.firstName + ' ' + (member.middleName ? member.middleName + ' ' : '') + member.lastName),
+    member.lastName || '',
+    member.fullName || (member.firstName + (member.middleName ? ' ' + member.middleName : '') + (member.lastName ? ' ' + member.lastName : '')),
     member.birthday || '',
     member.age || '',
     member.gender || 'Male',

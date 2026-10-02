@@ -41,7 +41,13 @@ export const StorageService = {
       return INITIAL_MEMBERS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      // Migrate from old sample data (10 mock members) to the 66 official youth members
+      if (Array.isArray(parsed) && (parsed.length <= 10 || parsed.some((m: Member) => m.fullName === 'Juan Dela Cruz' || m.lastName === 'Dela Cruz'))) {
+        this.saveMembers(INITIAL_MEMBERS);
+        return INITIAL_MEMBERS;
+      }
+      return parsed;
     } catch {
       return INITIAL_MEMBERS;
     }
@@ -95,7 +101,12 @@ export const StorageService = {
       return INITIAL_ATTENDANCE_RECORDS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.some((a: AttendanceRecord) => a.memberName === 'Juan Dela Cruz')) {
+        this.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
+        return INITIAL_ATTENDANCE_RECORDS;
+      }
+      return parsed;
     } catch {
       return INITIAL_ATTENDANCE_RECORDS;
     }
@@ -143,13 +154,35 @@ export const StorageService = {
 
   // --- Settings ---
   getSettings(): SystemSettings {
+    const defaultUrl = (import.meta.env.VITE_APPS_SCRIPT_URL as string) || DEFAULT_SETTINGS.googleSheets.appsScriptUrl || '';
+    const defaultSpreadsheetId = (import.meta.env.VITE_SPREADSHEET_ID as string) || DEFAULT_SETTINGS.googleSheets.spreadsheetId || '';
+
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (!raw) {
-      this.saveSettings(DEFAULT_SETTINGS);
-      return DEFAULT_SETTINGS;
+      const initial: SystemSettings = {
+        ...DEFAULT_SETTINGS,
+        googleSheets: {
+          ...DEFAULT_SETTINGS.googleSheets,
+          appsScriptUrl: defaultUrl,
+          spreadsheetId: defaultSpreadsheetId,
+        },
+      };
+      this.saveSettings(initial);
+      return initial;
     }
     try {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        googleSheets: {
+          ...DEFAULT_SETTINGS.googleSheets,
+          ...(parsed.googleSheets || {}),
+          // Fall back to permanent default if not set in local storage
+          appsScriptUrl: (parsed.googleSheets?.appsScriptUrl && parsed.googleSheets.appsScriptUrl.trim()) || defaultUrl,
+          spreadsheetId: (parsed.googleSheets?.spreadsheetId && parsed.googleSheets.spreadsheetId.trim()) || defaultSpreadsheetId,
+        },
+      };
     } catch {
       return DEFAULT_SETTINGS;
     }

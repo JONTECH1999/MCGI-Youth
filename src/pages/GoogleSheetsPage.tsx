@@ -40,18 +40,34 @@ export const GoogleSheetsPage: React.FC = () => {
   const [initResult, setInitResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isPushingAll, setIsPushingAll] = useState(false);
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Sync inputs if settings change externally
+  React.useEffect(() => {
+    if (settings.googleSheets.appsScriptUrl && !appsScriptUrlInput) {
+      setAppsScriptUrlInput(settings.googleSheets.appsScriptUrl);
+    }
+    if (settings.googleSheets.spreadsheetId && !spreadsheetIdInput) {
+      setSpreadsheetIdInput(settings.googleSheets.spreadsheetId);
+    }
+  }, [settings.googleSheets.appsScriptUrl, settings.googleSheets.spreadsheetId]);
 
   // Save Connection Settings
-  const handleSaveConnection = async () => {
+  const handleSaveConnection = async (overrideUrl?: string, overrideId?: string) => {
+    setIsSaving(true);
     const updated = {
       ...settings,
       googleSheets: {
         ...settings.googleSheets,
-        appsScriptUrl: appsScriptUrlInput.trim(),
-        spreadsheetId: spreadsheetIdInput.trim(),
+        appsScriptUrl: (overrideUrl !== undefined ? overrideUrl : appsScriptUrlInput).trim(),
+        spreadsheetId: (overrideId !== undefined ? overrideId : spreadsheetIdInput).trim(),
       },
     };
     await saveSettings(updated);
+    setIsSaving(false);
+    setIsSaved(true);
+    setTimeout(() => setIsSaved(false), 3000);
   };
 
   // Test Connection
@@ -73,6 +89,7 @@ export const GoogleSheetsPage: React.FC = () => {
     setIsInitializing(true);
     setInitResult(null);
     try {
+      await handleSaveConnection();
       const res = await initGoogleSheets();
       setInitResult({
         success: res.success,
@@ -93,6 +110,7 @@ export const GoogleSheetsPage: React.FC = () => {
     setIsPushingAll(true);
     setPushResult(null);
     try {
+      await handleSaveConnection();
       const res = await pushAllToGoogleSheets();
       setPushResult({
         success: res.success,
@@ -106,6 +124,11 @@ export const GoogleSheetsPage: React.FC = () => {
     } finally {
       setIsPushingAll(false);
     }
+  };
+
+  const handleSyncFromSheets = async () => {
+    await handleSaveConnection();
+    await syncFromGoogleSheets();
   };
 
   const handleCopyScript = () => {
@@ -159,10 +182,31 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
 
       {/* Connection Parameters Card */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-5 space-y-4">
-        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-          <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-          <span>Google Apps Script Web App Connection</span>
-        </h3>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+            <span>Google Apps Script Web App Connection</span>
+          </h3>
+
+          <div className="flex items-center gap-2">
+            {isSaved && (
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                <Check className="h-3 w-3" />
+                <span>Saved Permanently!</span>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => handleSaveConnection()}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-xs disabled:opacity-50 transition-colors"
+              title="Saves this URL and Spreadsheet ID permanently in your browser"
+            >
+              {isSaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 text-emerald-400" />}
+              <span>{isSaving ? 'Saving...' : 'Save Settings'}</span>
+            </button>
+          </div>
+        </div>
 
         <div className="space-y-4">
           <div>
@@ -187,12 +231,16 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               type="url"
               value={appsScriptUrlInput}
               onChange={(e) => setAppsScriptUrlInput(e.target.value)}
+              onBlur={() => handleSaveConnection()}
               placeholder="https://script.google.com/macros/s/AKfycb.../exec"
               className="w-full rounded-lg border border-slate-300 py-2 px-3 text-xs font-mono focus:border-blue-500 focus:outline-hidden"
             />
-            <p className="text-[11px] text-slate-500 mt-1">
-              Obtained from Google Spreadsheet &gt; Extensions &gt; Apps Script &gt; Deploy &gt; New deployment &gt; Web app (Access: Anyone).
-            </p>
+            <div className="flex items-center justify-between mt-1 text-[11px] text-slate-500">
+              <p>
+                Obtained from Google Spreadsheet &gt; Extensions &gt; Apps Script &gt; Deploy &gt; New deployment &gt; Web app (Access: Anyone).
+              </p>
+              <span className="text-slate-400 text-[10px]">Auto-saves on blur</span>
+            </div>
           </div>
 
           <div>
@@ -203,6 +251,7 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               type="text"
               value={spreadsheetIdInput}
               onChange={(e) => setSpreadsheetIdInput(e.target.value)}
+              onBlur={() => handleSaveConnection()}
               placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
               className="w-full rounded-lg border border-slate-300 py-2 px-3 text-xs font-mono focus:border-blue-500 focus:outline-hidden"
             />
@@ -230,7 +279,7 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               <button
                 type="button"
                 onClick={handleInitializeSpreadsheet}
-                disabled={isInitializing || !GasApiService.isConfigured()}
+                disabled={isInitializing || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
                 className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                 title="Creates all 15 worksheets (MEMBERS, ATTENDANCE_EVENTS, OFFICIAL_SUMMARY, etc.) with frozen navy blue headers and formulas"
               >
@@ -242,7 +291,7 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               <button
                 type="button"
                 onClick={handlePushAll}
-                disabled={isPushingAll || !GasApiService.isConfigured()}
+                disabled={isPushingAll || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
                 className="flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
                 title="Uploads all members, attendance, events, announcements, and official summaries into your Google Sheet"
               >
@@ -253,8 +302,8 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               {/* 4. Sync from Google Sheets (Download) */}
               <button
                 type="button"
-                onClick={() => syncFromGoogleSheets()}
-                disabled={isSyncing || !GasApiService.isConfigured()}
+                onClick={handleSyncFromSheets}
+                disabled={isSyncing || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
                 className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition-colors"
                 title="Pulls and updates members and records from Google Sheets down into this web app"
               >

@@ -157,25 +157,32 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
       validationErrors.firstName = 'First Name is required.';
     }
 
-    if (!formData.lastName?.trim()) {
-      validationErrors.lastName = 'Last Name is required.';
-    }
-
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
     }
 
     setIsSubmitting(true);
-    const fullName = `${formData.firstName!.trim()} ${
-      formData.middleName ? formData.middleName.trim() + ' ' : ''
-    }${formData.lastName!.trim()}`;
+    const prefix = formData.gender === 'Female' ? 'S. ' : 'B. ';
+    const fName = formData.firstName!.trim();
+    const lName = formData.lastName?.trim() || '';
+    const mName = formData.middleName?.trim() || '';
+
+    // If fullName is already prefixed or customized, preserve it; otherwise compute
+    let fullName = formData.fullName?.trim();
+    if (!fullName || fullName.toLowerCase() === fName.toLowerCase()) {
+      if (lName) {
+        fullName = `${fName} ${mName ? mName + ' ' : ''}${lName}`;
+      } else {
+        fullName = `${prefix}${fName}`;
+      }
+    }
 
     const memberToSave: Member = {
       memberId: formData.memberId!.trim(),
-      firstName: formData.firstName!.trim(),
-      middleName: formData.middleName?.trim() || '',
-      lastName: formData.lastName!.trim(),
+      firstName: fName,
+      middleName: mName,
+      lastName: lName,
       fullName,
       birthday: formData.birthday || '',
       age: Number(formData.age) || 0,
