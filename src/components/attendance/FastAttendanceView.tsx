@@ -30,8 +30,14 @@ export const FastAttendanceView: React.FC = () => {
     members,
     attendance,
     recordAttendanceBatch,
+    saveSchedule,
   } = useAppData();
   const { user } = useAuth();
+
+  // Helper to reliably get unique member ID
+  const getMemberId = (m: Member): string => {
+    return (m.memberId || (m as any).memberID || '').trim();
+  };
 
   // Selection states
   const [selectedEventId, setSelectedEventId] = useState<string>('');
@@ -58,51 +64,86 @@ export const FastAttendanceView: React.FC = () => {
     if (events.length > 0 && !selectedEventId) {
       // Find ongoing or first event
       const ongoing = events.find((e) => e.status === 'Ongoing') || events[0];
-      setSelectedEventId(ongoing.eventId);
+      const targetId = ongoing.eventId || (ongoing as any).eventID || '';
+      setSelectedEventId(targetId);
     }
   }, [events, selectedEventId]);
 
-  // When event changes, auto-select schedule
+  // Robustly find all available schedules for selected event (case-insensitive & handles eventId/eventID)
+  const availableSchedules = useMemo(() => {
+    if (!selectedEventId) return [];
+    const targetEvtId = String(selectedEventId).trim().toLowerCase();
+
+    const forEvent = schedules.filter((s) => {
+      const sEvtId = String(s.eventId || (s as any).eventID || '').trim().toLowerCase();
+      return sEvtId === targetEvtId;
+    });
+
+    const activeOnly = forEvent.filter((s) => {
+      const status = String(s.status || 'Active').trim().toLowerCase();
+      return status === 'active' || status === 'ongoing';
+    });
+
+    return activeOnly.length > 0 ? activeOnly : forEvent;
+  }, [schedules, selectedEventId]);
+
+  // When event changes or available schedules change, auto-select schedule
   useEffect(() => {
     if (selectedEventId) {
-      const eventSchedules = schedules.filter((s) => s.eventId === selectedEventId && s.status === 'Active');
-      if (eventSchedules.length > 0) {
-        setSelectedScheduleId(eventSchedules[0].scheduleId);
+      if (availableSchedules.length > 0) {
+        const currentValid = availableSchedules.some(
+          (s) => (s.scheduleId || (s as any).scheduleID) === selectedScheduleId
+        );
+        if (!currentValid) {
+          setSelectedScheduleId(availableSchedules[0].scheduleId || (availableSchedules[0] as any).scheduleID);
+        }
       } else {
         setSelectedScheduleId('');
+        setWorkingStatus({});
+        setHasUnsavedChanges(false);
       }
     }
-  }, [selectedEventId, schedules]);
+  }, [selectedEventId, availableSchedules, selectedScheduleId]);
 
   // Load existing attendance for selected schedule into working status
   useEffect(() => {
     if (selectedScheduleId) {
-      const scheduleRecords = attendance.filter((a) => a.scheduleId === selectedScheduleId);
+      const scheduleRecords = attendance.filter((a) => {
+        const aSchedId = a.scheduleId || (a as any).scheduleID;
+        return aSchedId === selectedScheduleId;
+      });
       const initial: Record<string, AttendanceStatus> = {};
       scheduleRecords.forEach((r) => {
-        initial[r.memberId] = r.attendanceStatus;
+        const memId = (r.memberId || (r as any).memberID || '').trim();
+        if (memId && r.attendanceStatus) {
+          initial[memId] = r.attendanceStatus;
+        }
       });
       setWorkingStatus(initial);
+      setHasUnsavedChanges(false);
+      setSaveSuccessMessage(null);
+    } else {
+      setWorkingStatus({});
       setHasUnsavedChanges(false);
       setSaveSuccessMessage(null);
     }
   }, [selectedScheduleId, attendance]);
 
-  const currentEvent = events.find((e) => e.eventId === selectedEventId);
-  const currentSchedule = schedules.find((s) => s.scheduleId === selectedScheduleId);
-  const availableSchedules = schedules.filter((s) => s.eventId === selectedEventId && s.status === 'Active');
+  const currentEvent = events.find((e) => (e.eventId || (e as any).eventID) === selectedEventId);
+  const currentSchedule = schedules.find((s) => (s.scheduleId || (s as any).scheduleID) === selectedScheduleId);
 
   // Filter members
   const filteredMembers = useMemo(() => {
     return members.filter((m) => {
+      const id = getMemberId(m);
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const matchesName = m.fullName.toLowerCase().includes(q) ||
-          m.firstName.toLowerCase().includes(q) ||
-          m.lastName.toLowerCase().includes(q);
-        const matchesId = m.memberId.toLowerCase().includes(q);
-        const matchesContact = m.contactNumber.toLowerCase().includes(q);
+        const matchesName = (m.fullName || '').toLowerCase().includes(q) ||
+          (m.firstName || '').toLowerCase().includes(q) ||
+          (m.lastName || '').toLowerCase().includes(q);
+        const matchesId = id.toLowerCase().includes(q);
+        const matchesContact = (m.contactNumber || '').toLowerCase().includes(q);
         if (!matchesName && !matchesId && !matchesContact) return false;
       }
 
@@ -117,7 +158,7 @@ export const FastAttendanceView: React.FC = () => {
       }
 
       // Committee
-      if (committeeFilter !== 'All' && !m.committees.includes(committeeFilter)) {
+      if (committeeFilter !== 'All' && (!m.committees || !m.committees.includes(committeeFilter))) {
         return false;
       }
 
@@ -134,7 +175,8 @@ export const FastAttendanceView: React.FC = () => {
     let unmarked = 0;
 
     filteredMembers.forEach((m) => {
-      const s = workingStatus[m.memberId];
+      const id = getMemberId(m);
+      const s = id ? workingStatus[id] : undefined;
       if (s === 'Present') present++;
       else if (s === 'Absent') absent++;
       else if (s === 'Excused') excused++;
@@ -146,7 +188,13 @@ export const FastAttendanceView: React.FC = () => {
   }, [filteredMembers, workingStatus]);
 
   // Set individual member attendance
-  const handleMark = (memberId: string, status: AttendanceStatus) => {
+  const handleMark = (rawMemberId: string, status: AttendanceStatus) => {
+    const memberId = (rawMemberId || '').trim();
+    if (!memberId) {
+      console.warn('Cannot mark attendance: Member ID is missing.');
+      return;
+    }
+
     setWorkingStatus((prev) => {
       if (prev[memberId] === status) {
         // Toggle off if clicked again
@@ -164,7 +212,10 @@ export const FastAttendanceView: React.FC = () => {
   const handleMarkAllPresent = () => {
     const next = { ...workingStatus };
     filteredMembers.forEach((m) => {
-      next[m.memberId] = 'Present';
+      const id = getMemberId(m);
+      if (id) {
+        next[id] = 'Present';
+      }
     });
     setWorkingStatus(next);
     setHasUnsavedChanges(true);
@@ -173,8 +224,9 @@ export const FastAttendanceView: React.FC = () => {
   const handleMarkAllAbsent = () => {
     const next = { ...workingStatus };
     filteredMembers.forEach((m) => {
-      if (!next[m.memberId]) {
-        next[m.memberId] = 'Absent';
+      const id = getMemberId(m);
+      if (id && !next[id]) {
+        next[id] = 'Absent';
       }
     });
     setWorkingStatus(next);
@@ -184,7 +236,10 @@ export const FastAttendanceView: React.FC = () => {
   const handleClearAttendance = () => {
     const next = { ...workingStatus };
     filteredMembers.forEach((m) => {
-      delete next[m.memberId];
+      const id = getMemberId(m);
+      if (id) {
+        delete next[id];
+      }
     });
     setWorkingStatus(next);
     setHasUnsavedChanges(true);
@@ -199,17 +254,20 @@ export const FastAttendanceView: React.FC = () => {
 
     const recordsToSave: AttendanceRecord[] = [];
     const now = new Date().toISOString();
+    const curSchedId = currentSchedule.scheduleId || (currentSchedule as any).scheduleID;
+    const curEvtId = currentEvent.eventId || (currentEvent as any).eventID;
 
     // Iterate through all members with marked status in this schedule
     Object.keys(workingStatus).forEach((memberId) => {
+      if (!memberId || memberId === 'undefined' || memberId === 'null') return;
       const status = workingStatus[memberId];
-      const member = members.find((m) => m.memberId === memberId);
+      const member = members.find((m) => getMemberId(m) === memberId);
       if (status && member) {
         recordsToSave.push({
-          attendanceId: `ATT-${member.memberId}-${currentSchedule.scheduleId}`,
-          eventId: currentEvent.eventId,
-          scheduleId: currentSchedule.scheduleId,
-          memberId: member.memberId,
+          attendanceId: `ATT-${memberId}-${curSchedId}`,
+          eventId: curEvtId,
+          scheduleId: curSchedId,
+          memberId: memberId,
           memberName: member.fullName,
           eventName: currentEvent.eventName,
           eventDate: currentSchedule.date,
@@ -251,11 +309,14 @@ export const FastAttendanceView: React.FC = () => {
               onChange={(e) => setSelectedEventId(e.target.value)}
               className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-semibold text-slate-900 shadow-2xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
             >
-              {events.map((ev) => (
-                <option key={ev.eventId} value={ev.eventId}>
-                  {ev.eventName} ({ev.eventType})
-                </option>
-              ))}
+              {events.map((ev) => {
+                const eId = ev.eventId || (ev as any).eventID;
+                return (
+                  <option key={eId} value={eId}>
+                    {ev.eventName} ({ev.eventType})
+                  </option>
+                );
+              })}
             </select>
             {currentEvent && (
               <p className="mt-1 text-[11px] text-slate-500">
@@ -275,15 +336,43 @@ export const FastAttendanceView: React.FC = () => {
                 onChange={(e) => setSelectedScheduleId(e.target.value)}
                 className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-semibold text-slate-900 shadow-2xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
               >
-                {availableSchedules.map((sc) => (
-                  <option key={sc.scheduleId} value={sc.scheduleId}>
-                    {sc.scheduleLabel} ({sc.date})
-                  </option>
-                ))}
+                {availableSchedules.map((sc) => {
+                  const sId = sc.scheduleId || (sc as any).scheduleID;
+                  return (
+                    <option key={sId} value={sId}>
+                      {sc.scheduleLabel} ({sc.date})
+                    </option>
+                  );
+                })}
               </select>
             ) : (
-              <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
-                No active schedules found for this event.
+              <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 space-y-2">
+                <p className="font-semibold">No active schedules found for this event.</p>
+                {currentEvent && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const todayStr = new Date().toISOString().split('T')[0];
+                      const newSched = {
+                        scheduleId: `SCH-${Date.now().toString().slice(-6)}`,
+                        eventId: currentEvent.eventId || (currentEvent as any).eventID,
+                        date: currentEvent.startDate || todayStr,
+                        startTime: '04:00 PM',
+                        endTime: '08:00 PM',
+                        scheduleLabel: `${currentEvent.eventType} Official Schedule`,
+                        location: currentEvent.location || 'Ascoville Chapel',
+                        status: 'Active' as const,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                      };
+                      await saveSchedule(newSched);
+                      setSelectedScheduleId(newSched.scheduleId);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 text-white font-bold hover:bg-amber-700 transition-colors shadow-2xs"
+                  >
+                    <span>+ Quick Create Schedule</span>
+                  </button>
+                )}
               </div>
             )}
             {currentSchedule && (
@@ -461,11 +550,12 @@ export const FastAttendanceView: React.FC = () => {
         ) : (
           <div className="divide-y divide-slate-100">
             {filteredMembers.map((member) => {
-              const currentStatus = workingStatus[member.memberId];
+              const memberId = getMemberId(member);
+              const currentStatus = memberId ? workingStatus[memberId] : undefined;
 
               return (
                 <div
-                  key={member.memberId}
+                  key={memberId || member.fullName}
                   className={`p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors ${
                     currentStatus === 'Present'
                       ? 'bg-emerald-50/40'
@@ -481,8 +571,8 @@ export const FastAttendanceView: React.FC = () => {
                   {/* Member Details */}
                   <div className="flex items-start sm:items-center gap-3 min-w-0">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200">
-                      {member.firstName[0]}
-                      {member.lastName[0]}
+                      {(member.firstName && member.firstName[0]) || 'M'}
+                      {(member.lastName && member.lastName !== '.' && member.lastName[0]) || ''}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -490,14 +580,14 @@ export const FastAttendanceView: React.FC = () => {
                           {member.fullName}
                         </span>
                         <span className="text-[11px] font-mono font-medium text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                          {member.memberId}
+                          {memberId || 'NO-ID'}
                         </span>
                         <StatusBadge status={member.memberCategory} />
                         <StatusBadge status={member.membershipStatus} />
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-500 flex-wrap">
                         <span>{member.contactNumber}</span>
-                        {member.committees.length > 0 && (
+                        {member.committees && member.committees.length > 0 && (
                           <>
                             <span>•</span>
                             <span className="text-blue-600 font-medium truncate max-w-xs">
@@ -529,7 +619,7 @@ export const FastAttendanceView: React.FC = () => {
                   <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
                     <button
                       type="button"
-                      onClick={() => handleMark(member.memberId, 'Present')}
+                      onClick={() => handleMark(memberId, 'Present')}
                       className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                         currentStatus === 'Present'
                           ? 'bg-emerald-600 text-white shadow-xs scale-102 ring-2 ring-emerald-400'
@@ -542,7 +632,7 @@ export const FastAttendanceView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleMark(member.memberId, 'Absent')}
+                      onClick={() => handleMark(memberId, 'Absent')}
                       className={`px-3 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                         currentStatus === 'Absent'
                           ? 'bg-rose-600 text-white shadow-xs scale-102 ring-2 ring-rose-400'
@@ -555,7 +645,7 @@ export const FastAttendanceView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleMark(member.memberId, 'Late')}
+                      onClick={() => handleMark(memberId, 'Late')}
                       className={`px-2.5 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                         currentStatus === 'Late'
                           ? 'bg-amber-600 text-white shadow-xs scale-102 ring-2 ring-amber-400'
@@ -568,7 +658,7 @@ export const FastAttendanceView: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => handleMark(member.memberId, 'Excused')}
+                      onClick={() => handleMark(memberId, 'Excused')}
                       className={`px-2.5 py-2 sm:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                         currentStatus === 'Excused'
                           ? 'bg-cyan-600 text-white shadow-xs scale-102 ring-2 ring-cyan-400'

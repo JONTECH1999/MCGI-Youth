@@ -260,6 +260,12 @@ function getSheetDataAsJson(sheetName) {
       }
     }
     if (hasContent) {
+      // Ensure canonical ID fields exist even if header was named differently
+      if (obj.memberID && !obj.memberId) obj.memberId = obj.memberID;
+      if (obj.eventID && !obj.eventId) obj.eventId = obj.eventID;
+      if (obj.scheduleID && !obj.scheduleId) obj.scheduleId = obj.scheduleID;
+      if (obj.attendanceID && !obj.attendanceId) obj.attendanceId = obj.attendanceID;
+
       // Parse arrays if stored as comma-separated (e.g. committees)
       if (obj.committees && typeof obj.committees === 'string') {
         obj.committees = obj.committees.split(',').map(function(c) { return c.trim(); }).filter(Boolean);
@@ -1288,12 +1294,14 @@ function getOrCreateSheet(name) {
  * Helper: string to camelCase
  */
 function toCamelCase(str) {
-  return str
+  var camel = str
     .replace(/(?:^\w|[A-Z]|\b\w)/g, function(letter, index) {
       return index === 0 ? letter.toLowerCase() : letter.toUpperCase();
     })
     .replace(/\s+/g, '')
     .replace(/[^a-zA-Z0-9]/g, '');
+  // Normalize uppercase ID/Id suffix (e.g. memberID -> memberId, eventID -> eventId, scheduleID -> scheduleId)
+  return camel.replace(/ID$/, 'Id');
 }
 
 

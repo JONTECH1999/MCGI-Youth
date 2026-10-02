@@ -201,6 +201,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (data.members && data.members.length > 0) {
         const cleanedMembers = data.members.map((m: any) => ({
           ...m,
+          memberId: m.memberId || m.memberID || m.id || '',
           age: Number(m.age) || 0,
           attendanceCount: Number(m.attendanceCount) || 0,
           attendancePercentage: Number(m.attendancePercentage) || 0,
@@ -217,16 +218,32 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setMembers(cleanedMembers);
       }
       if (data.events && data.events.length > 0) {
-        StorageService.saveEvents(data.events);
-        setEvents(data.events);
+        const cleanedEvents = data.events.map((e: any) => ({
+          ...e,
+          eventId: e.eventId || e.eventID || e.id || '',
+        }));
+        StorageService.saveEvents(cleanedEvents);
+        setEvents(cleanedEvents);
       }
       if (data.schedules && data.schedules.length > 0) {
-        StorageService.saveSchedules(data.schedules);
-        setSchedules(data.schedules);
+        const cleanedSchedules = data.schedules.map((s: any) => ({
+          ...s,
+          scheduleId: s.scheduleId || s.scheduleID || s.id || '',
+          eventId: s.eventId || s.eventID || '',
+        }));
+        StorageService.saveSchedules(cleanedSchedules);
+        setSchedules(cleanedSchedules);
       }
       if (data.attendance && data.attendance.length > 0) {
-        StorageService.saveAttendance(data.attendance);
-        setAttendance(data.attendance);
+        const cleanedAttendance = data.attendance.map((a: any) => ({
+          ...a,
+          attendanceId: a.attendanceId || a.attendanceID || a.id || '',
+          memberId: a.memberId || a.memberID || '',
+          scheduleId: a.scheduleId || a.scheduleID || '',
+          eventId: a.eventId || a.eventID || '',
+        }));
+        StorageService.saveAttendance(cleanedAttendance);
+        setAttendance(cleanedAttendance);
       }
 
       const syncTime = new Date().toISOString();

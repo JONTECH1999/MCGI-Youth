@@ -43,18 +43,31 @@ export const StorageService = {
     try {
       const parsed = JSON.parse(raw);
       // Migrate from old sample data (10 mock members) to the 66 official youth members
-      if (Array.isArray(parsed) && (parsed.length <= 10 || parsed.some((m: Member) => m.fullName === 'Juan Dela Cruz' || m.lastName === 'Dela Cruz'))) {
-        this.saveMembers(INITIAL_MEMBERS);
-        return INITIAL_MEMBERS;
+      if (Array.isArray(parsed)) {
+        if (parsed.length <= 10 || parsed.some((m: any) => m.fullName === 'Juan Dela Cruz' || m.lastName === 'Dela Cruz')) {
+          this.saveMembers(INITIAL_MEMBERS);
+          return INITIAL_MEMBERS;
+        }
+        // Normalize any member loaded from localStorage (repair memberID -> memberId)
+        const normalized = parsed.map((m: any) => ({
+          ...m,
+          memberId: m.memberId || m.memberID || m.id || '',
+        }));
+        return normalized;
       }
-      return parsed;
+      return INITIAL_MEMBERS;
     } catch {
       return INITIAL_MEMBERS;
     }
   },
 
   saveMembers(members: Member[]) {
-    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(members));
+    // Ensure all members have clean memberId
+    const sanitized = members.map((m: any) => ({
+      ...m,
+      memberId: m.memberId || m.memberID || m.id || '',
+    }));
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sanitized));
   },
 
   // --- Events ---
@@ -65,14 +78,25 @@ export const StorageService = {
       return SAMPLE_EVENTS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((e: any) => ({
+          ...e,
+          eventId: e.eventId || e.eventID || e.id || '',
+        }));
+      }
+      return SAMPLE_EVENTS;
     } catch {
       return SAMPLE_EVENTS;
     }
   },
 
   saveEvents(events: AttendanceEvent[]) {
-    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(events));
+    const sanitized = events.map((e: any) => ({
+      ...e,
+      eventId: e.eventId || e.eventID || e.id || '',
+    }));
+    localStorage.setItem(STORAGE_KEYS.EVENTS, JSON.stringify(sanitized));
   },
 
   // --- Schedules ---
@@ -83,14 +107,27 @@ export const StorageService = {
       return SAMPLE_SCHEDULES;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((s: any) => ({
+          ...s,
+          scheduleId: s.scheduleId || s.scheduleID || s.id || '',
+          eventId: s.eventId || s.eventID || '',
+        }));
+      }
+      return SAMPLE_SCHEDULES;
     } catch {
       return SAMPLE_SCHEDULES;
     }
   },
 
   saveSchedules(schedules: EventSchedule[]) {
-    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(schedules));
+    const sanitized = schedules.map((s: any) => ({
+      ...s,
+      scheduleId: s.scheduleId || s.scheduleID || s.id || '',
+      eventId: s.eventId || s.eventID || '',
+    }));
+    localStorage.setItem(STORAGE_KEYS.SCHEDULES, JSON.stringify(sanitized));
   },
 
   // --- Attendance Records ---
@@ -102,18 +139,34 @@ export const StorageService = {
     }
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.some((a: AttendanceRecord) => a.memberName === 'Juan Dela Cruz')) {
-        this.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
-        return INITIAL_ATTENDANCE_RECORDS;
+      if (Array.isArray(parsed)) {
+        if (parsed.some((a: any) => a.memberName === 'Juan Dela Cruz')) {
+          this.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
+          return INITIAL_ATTENDANCE_RECORDS;
+        }
+        return parsed.map((a: any) => ({
+          ...a,
+          attendanceId: a.attendanceId || a.attendanceID || a.id || '',
+          memberId: a.memberId || a.memberID || '',
+          scheduleId: a.scheduleId || a.scheduleID || '',
+          eventId: a.eventId || a.eventID || '',
+        }));
       }
-      return parsed;
+      return INITIAL_ATTENDANCE_RECORDS;
     } catch {
       return INITIAL_ATTENDANCE_RECORDS;
     }
   },
 
   saveAttendance(records: AttendanceRecord[]) {
-    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(records));
+    const sanitized = records.map((a: any) => ({
+      ...a,
+      attendanceId: a.attendanceId || a.attendanceID || a.id || '',
+      memberId: a.memberId || a.memberID || '',
+      scheduleId: a.scheduleId || a.scheduleID || '',
+      eventId: a.eventId || a.eventID || '',
+    }));
+    localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(sanitized));
   },
 
   // --- Announcements ---
