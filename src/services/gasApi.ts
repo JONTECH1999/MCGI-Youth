@@ -212,10 +212,21 @@ export const GasApiService = {
   },
 
   /**
+   * Helper: ensure member has non-empty lastName for Google Apps Script validation
+   */
+  sanitizeMember(member: Member): any {
+    return {
+      ...member,
+      lastName: (member.lastName && member.lastName.trim()) || '.',
+      fullName: member.fullName || (member.firstName + (member.lastName ? ' ' + member.lastName : '')),
+    };
+  },
+
+  /**
    * Member Operations
    */
   async saveMember(member: Member): Promise<GasApiResponse> {
-    return this.postAction('saveMember', member);
+    return this.postAction('saveMember', this.sanitizeMember(member));
   },
 
   async deleteMember(memberId: string, hardDelete: boolean = false): Promise<GasApiResponse> {
@@ -309,6 +320,10 @@ export const GasApiService = {
     settings?: SystemSettings;
     officialSummary?: any;
   }): Promise<GasApiResponse> {
-    return this.postAction('pushAllData', payload);
+    const sanitizedPayload = {
+      ...payload,
+      members: payload.members.map((m) => this.sanitizeMember(m)),
+    };
+    return this.postAction('pushAllData', sanitizedPayload);
   }
 };

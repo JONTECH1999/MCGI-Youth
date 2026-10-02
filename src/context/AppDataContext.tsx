@@ -135,7 +135,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshLocalData();
   }, [refreshLocalData]);
 
-  // Initial connection check if URL configured
+  // Initial connection check & auto-sync from Google Sheets on mount / URL change
   useEffect(() => {
     if (GasApiService.isConfigured()) {
       setConnectionStatus('Checking');
@@ -143,6 +143,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (res.success) {
           setConnectionStatus('Connected');
           setConnectionError(undefined);
+          // Two-way sync: fetch latest data from Google Sheet on startup
+          syncFromGoogleSheets();
         } else {
           setConnectionStatus('Error');
           setConnectionError(res.message);
@@ -152,6 +154,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setConnectionStatus('Disconnected');
     }
   }, [settings.googleSheets.appsScriptUrl]);
+
+  // Window focus listener: auto-fetch changes when user returns to web app after editing Google Sheets
+  useEffect(() => {
+    const handleFocus = () => {
+      if (GasApiService.isConfigured() && !isSyncing) {
+        syncFromGoogleSheets();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [isSyncing]);
 
   /**
    * Test Connection to GAS Web App
@@ -186,8 +199,22 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const { data } = res;
       if (data.members && data.members.length > 0) {
-        StorageService.saveMembers(data.members);
-        setMembers(data.members);
+        const cleanedMembers = data.members.map((m: any) => ({
+          ...m,
+          age: Number(m.age) || 0,
+          attendanceCount: Number(m.attendanceCount) || 0,
+          attendancePercentage: Number(m.attendancePercentage) || 0,
+          registeredVoter: m.registeredVoter === true || m.registeredVoter === 'TRUE',
+          workingStudent: m.workingStudent === true || m.workingStudent === 'TRUE',
+          outOfSchoolYouth: m.outOfSchoolYouth === true || m.outOfSchoolYouth === 'TRUE',
+          committees: Array.isArray(m.committees)
+            ? m.committees
+            : m.committees
+            ? String(m.committees).split(',').map((c: string) => c.trim()).filter(Boolean)
+            : [],
+        }));
+        StorageService.saveMembers(cleanedMembers);
+        setMembers(cleanedMembers);
       }
       if (data.events && data.events.length > 0) {
         StorageService.saveEvents(data.events);
@@ -609,6 +636,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setMembers(res.updatedMembers);
       setAttendance(res.allAttendance);
       setLogs(StorageService.getLogs());
+
+      // Live sync to Google Sheets database
+      GasApiService.saveAttendanceBatch(records);
+      for (const m of res.updatedMembers) {
+        GasApiService.saveMember(m);
+      }
     }
     return { success: res.success, message: res.message };
   };
@@ -790,6 +823,14 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setMembers(res.updatedMembers);
       setAttendance(res.allAttendance);
       setLogs(StorageService.getLogs());
+
+      // Live sync to Google Sheets
+      GasApiService.saveAttendanceBatch([newRecord]);
+      const updatedMem = res.updatedMembers.find((m) => m.memberId === memberId);
+      if (updatedMem) {
+        GasApiService.saveMember(updatedMem);
+      }
+
       return {
         success: true,
         message: `Attendance confirmed! Thank you, ${member.firstName}.`,
