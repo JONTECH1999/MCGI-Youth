@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Search,
   ArrowUpRight,
@@ -7,6 +7,7 @@ import {
   Clock,
   MapPin,
   CheckCircle2,
+  CheckCircle,
   Users,
   ChevronLeft,
   ChevronRight,
@@ -18,12 +19,22 @@ import {
   LogOut,
   Lock,
   Sparkles,
+  Video,
+  AlertCircle,
+  Check,
 } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { Member } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { Announcement } from '../types/announcement';
 import { GatheringItem } from '../types/landingPage';
+import {
+  RegularGatheringSlot,
+  LOKAL_REGULAR_SCHEDULES,
+  getAutomatedGatheringSlot,
+  resolveOrCreateSlotEventSchedule,
+  formatDateYYYYMMDD,
+} from '../data/lokalSchedule';
 
 // Modals
 import { MemberSearchModal } from '../components/landing/MemberSearchModal';
@@ -33,6 +44,7 @@ import { EventDetailsModal } from '../components/landing/EventDetailsModal';
 import { AnnouncementDetailsModal } from '../components/landing/AnnouncementDetailsModal';
 import { EventCheckInModal } from '../components/landing/EventCheckInModal';
 import { AdminLoginModal } from '../components/landing/AdminLoginModal';
+import { GatheringSelectorModal } from '../components/landing/GatheringSelectorModal';
 
 interface LandingPageProps {
   onEnterAdmin: () => void;
@@ -48,6 +60,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     landingPageConfig,
     recordMemberAttendance,
     checkMemberAttendance,
+    saveEvent,
+    saveSchedule,
   } = useAppData();
 
   // Ambient cursor spotlight effect
@@ -108,6 +122,141 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
   // Quick search input in hero
   const [heroSearchText, setHeroSearchText] = useState('');
+
+  // Automated Gathering Slot (Auto-detects based on day of week and current time)
+  const [selectedGatheringSlot, setSelectedGatheringSlot] = useState<RegularGatheringSlot>(
+    () => getAutomatedGatheringSlot().slot
+  );
+  const [selectedGatheringDate, setSelectedGatheringDate] = useState<string>(
+    () => getAutomatedGatheringSlot().dateStr
+  );
+  const [isManualOverride, setIsManualOverride] = useState<boolean>(false);
+  const [isGatheringSelectorOpen, setIsGatheringSelectorOpen] = useState<boolean>(false);
+
+  // Auto-update gathering slot if not manually overridden (polls every minute)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!isManualOverride) {
+        const auto = getAutomatedGatheringSlot();
+        if (auto.slot.slotId !== selectedGatheringSlot.slotId || auto.dateStr !== selectedGatheringDate) {
+          setSelectedGatheringSlot(auto.slot);
+          setSelectedGatheringDate(auto.dateStr);
+        }
+      }
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [isManualOverride, selectedGatheringSlot.slotId, selectedGatheringDate]);
+
+  // Schedule roster filter tab
+  const [scheduleFilterTab, setScheduleFilterTab] = useState<'ALL' | 'PM' | 'WS' | 'TG'>('ALL');
+
+  const handleSelectSlotFromSchedule = (slot: RegularGatheringSlot) => {
+    setSelectedGatheringSlot(slot);
+    setSelectedGatheringDate(formatDateYYYYMMDD(new Date()));
+    setIsManualOverride(true);
+    const element = document.getElementById('hero-attendance');
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Check if member is already marked Present for active slot & date
+  const isMemberAttendedForActiveSlot = (memberId: string): boolean => {
+    if (!memberId) return false;
+    return attendance.some((a) => {
+      const memMatch = (a.memberId || (a as any).memberID) === memberId;
+      const dateMatch = a.eventDate === selectedGatheringDate;
+      const labelMatch =
+        (a.schedule && a.schedule.toLowerCase().includes(selectedGatheringSlot.time.toLowerCase())) ||
+        (a.schedule && a.schedule.toLowerCase().includes(selectedGatheringSlot.slotId.toLowerCase()));
+      const eventMatch =
+        (a.eventName && a.eventName.toLowerCase().includes(selectedGatheringSlot.eventType.toLowerCase())) ||
+        (a.eventId && a.eventId.toLowerCase().includes(selectedGatheringSlot.eventType.toLowerCase()));
+      return memMatch && dateMatch && (labelMatch || eventMatch) && a.attendanceStatus === 'Present';
+    });
+  };
+
+  // Quick attend states
+  const [attendingMemberId, setAttendingMemberId] = useState<string | null>(null);
+  const [attendSuccessToast, setAttendSuccessToast] = useState<{
+    memberName: string;
+    gatheringName: string;
+    time: string;
+    date: string;
+  } | null>(null);
+  const [attendErrorToast, setAttendErrorToast] = useState<string | null>(null);
+
+  // Handler for 1-Click Instant Attendance
+  const handleQuickAttend = async (member: Member) => {
+    const memId = member.memberId || (member as any).memberID;
+    if (!memId) return;
+
+    setAttendingMemberId(memId);
+    setAttendErrorToast(null);
+
+    try {
+      // 1. Resolve or ensure AttendanceEvent and EventSchedule exist
+      const { event, schedule } = await resolveOrCreateSlotEventSchedule(
+        selectedGatheringSlot,
+        selectedGatheringDate,
+        events,
+        schedules,
+        saveEvent,
+        saveSchedule
+      );
+
+      // 2. Record attendance as Present
+      const curSchedId = schedule.scheduleId || (schedule as any).scheduleID;
+      const curEvtId = event.eventId || (event as any).eventID;
+
+      const res = await recordMemberAttendance({
+        memberId: memId,
+        eventId: curEvtId,
+        scheduleId: curSchedId,
+        scheduleLabel: `${selectedGatheringSlot.dayName} ${selectedGatheringSlot.time}`,
+        eventName: selectedGatheringSlot.eventName,
+        eventDate: selectedGatheringDate,
+        recordedBy: `${member.fullName} (Self Check-in)`,
+      });
+
+      if (res.success || res.duplicate) {
+        setActiveMember(member);
+        localStorage.setItem('mcgi_portal_member', JSON.stringify(member));
+
+        setAttendSuccessToast({
+          memberName: member.fullName,
+          gatheringName: selectedGatheringSlot.eventName,
+          time: selectedGatheringSlot.time,
+          date: selectedGatheringDate,
+        });
+
+        setTimeout(() => {
+          setAttendSuccessToast(null);
+        }, 7000);
+      } else {
+        setAttendErrorToast(res.message);
+      }
+    } catch (err: any) {
+      setAttendErrorToast(err.message || 'Error recording attendance.');
+    } finally {
+      setAttendingMemberId(null);
+    }
+  };
+
+  // Hero matched members for live pop-up
+  const heroMatchedMembers = useMemo(() => {
+    const q = heroSearchText.trim().toLowerCase();
+    if (!q) return [];
+    return members
+      .filter((m) => {
+        const full = (m.fullName || '').toLowerCase();
+        const first = (m.firstName || '').toLowerCase();
+        const last = (m.lastName || '').toLowerCase();
+        const id = (m.memberId || '').toLowerCase();
+        return full.includes(q) || first.includes(q) || last.includes(q) || id.includes(q);
+      })
+      .slice(0, 10);
+  }, [heroSearchText, members]);
 
   // Search Handler
   const handleOpenSearchWithQuery = (query: string) => {
@@ -235,8 +384,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         num: '03',
         title: 'Thanksgiving of God’s People',
         subtitle: 'Weekly Celebration of Grace',
-        date: 'Every Saturday Evening (Pasalamat)',
-        desc: 'Congregational sacrifice of thanksgiving (Pasalamat) for God’s continuous mercy, protection, and guidance.',
+        date: 'Sat (4:00pm) · Sun (5:00am) · Mon (8:30am)',
+        desc: 'Congregational sacrifice of thanksgiving (Pasalamat) for God’s continuous mercy, protection, and guidance across 3 weekly batches.',
         image:
           landingPageConfig?.gatheringImages?.thanksgiving ||
           'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
@@ -409,30 +558,222 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                   'A vibrant spiritual community for youth brethren of the Local of Ascoville — built to nurture faith, service, and attendance diligence.'}
               </p>
 
-              {/* Quick Search & Actions */}
-              <div className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4 max-w-xl">
-                <div className="relative flex-1">
-                  <input
-                    type="text"
-                    value={heroSearchText}
-                    onChange={(e) => setHeroSearchText(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && heroSearchText.trim()) {
-                        handleOpenSearchWithQuery(heroSearchText.trim());
-                      }
-                    }}
-                    placeholder="Enter your name or Member ID..."
-                    className="w-full pl-11 pr-4 py-3.5 text-xs font-normal bg-white/10 backdrop-blur-md border border-white/20 rounded-full text-white placeholder-cream-300/60 focus:outline-none focus:ring-2 focus:ring-bronze-400 focus:bg-white/15 transition"
-                  />
-                  <Search className="w-4 h-4 text-cream-300 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+              {/* Automated Active Gathering & Duty Assignment Card */}
+              <div id="hero-attendance" className="mt-7 rounded-2xl bg-black/40 backdrop-blur-md border border-white/20 p-5 text-white max-w-2xl shadow-xl scroll-mt-28">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/15">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-bronze-500 text-charcoal-950 shadow-2xs">
+                      <span className="w-2 h-2 rounded-full bg-charcoal-950 animate-pulse"></span>
+                      {isManualOverride ? 'Selected Gathering' : 'Today’s Gathering (Automated)'}
+                    </span>
+                    <span className="font-serif text-lg font-bold text-white">
+                      {selectedGatheringSlot.eventName}
+                    </span>
+                  </div>
+
+                  {/* Change Button / Choice of Gathering */}
+                  <button
+                    type="button"
+                    onClick={() => setIsGatheringSelectorOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white/15 hover:bg-white/25 border border-white/25 text-cream-100 transition shadow-2xs cursor-pointer self-start sm:self-auto"
+                    title="Change gathering or select another schedule batch"
+                  >
+                    <Calendar className="w-3.5 h-3.5 text-bronze-300" />
+                    <span>Change Gathering ▾</span>
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleOpenSearchWithQuery(heroSearchText.trim())}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-xs uppercase tracking-widest font-semibold rounded-full bg-bronze-500 hover:bg-bronze-400 text-charcoal-950 transition shrink-0"
-                >
-                  Search Record
-                  <ArrowUpRight className="w-4 h-4" />
-                </button>
+
+                {/* Day, Time & Duty Details */}
+                <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                      Schedule & Time
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5 font-bold text-sm text-white">
+                      <Clock className="w-3.5 h-3.5 text-bronze-400" />
+                      <span>{selectedGatheringSlot.dayFullName} · {selectedGatheringSlot.time}</span>
+                    </div>
+                    {selectedGatheringSlot.hasZoom && (
+                      <span className="inline-flex items-center gap-1 text-[10px] text-blue-300 font-semibold mt-1">
+                        <Video className="w-3 h-3" /> w/ Zoom link
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                      MPRO Incharge
+                    </span>
+                    <span className="font-semibold text-cream-100 block mt-0.5 text-xs">
+                      {selectedGatheringSlot.mproIncharge}
+                    </span>
+                  </div>
+
+                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                      Officers Assigned
+                    </span>
+                    <span className="font-semibold text-cream-100 block mt-0.5 text-xs">
+                      {selectedGatheringSlot.officersAssigned}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instant Search Name & Auto-Present Attendance Widget */}
+              <div className="mt-5 max-w-2xl relative">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={heroSearchText}
+                      onChange={(e) => setHeroSearchText(e.target.value)}
+                      placeholder="Type your name to attend (e.g. Agatha, Aljon, M-1001)..."
+                      className="w-full pl-11 pr-10 py-3.5 text-sm font-medium bg-white/15 backdrop-blur-md border border-white/25 rounded-2xl text-white placeholder-cream-300/70 focus:outline-none focus:ring-2 focus:ring-bronze-400 focus:bg-white/20 transition shadow-inner"
+                    />
+                    <Search className="w-4 h-4 text-cream-300 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    {heroSearchText && (
+                      <button
+                        type="button"
+                        onClick={() => setHeroSearchText('')}
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-cream-300 hover:text-white p-1 cursor-pointer"
+                        title="Clear input"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleOpenSearchWithQuery(heroSearchText.trim())}
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-xs uppercase tracking-widest font-bold rounded-2xl bg-bronze-500 hover:bg-bronze-400 text-charcoal-950 transition shrink-0 shadow-lg cursor-pointer"
+                  >
+                    <span>Search Roster</span>
+                    <ArrowUpRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Instant Live Matching Cards Pop-Up */}
+                {heroSearchText.trim().length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden divide-y divide-stone-100 z-40 text-stone-900 animate-in fade-in slide-in-from-top-2 duration-150 max-h-80 overflow-y-auto">
+                    <div className="px-4 py-2.5 bg-amber-50/90 border-b border-amber-200/60 flex items-center justify-between text-xs sticky top-0 backdrop-blur-md z-10">
+                      <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        Tap "Attend" to auto-present for {selectedGatheringSlot.eventName} ({selectedGatheringSlot.time})
+                      </span>
+                      <span className="text-stone-500 text-[11px] font-semibold">
+                        {heroMatchedMembers.length} match(es)
+                      </span>
+                    </div>
+
+                    {heroMatchedMembers.length === 0 ? (
+                      <div className="p-6 text-center text-stone-500 text-xs">
+                        No member found matching "{heroSearchText}". Check your spelling or search by Member ID.
+                      </div>
+                    ) : (
+                      heroMatchedMembers.map((member: Member) => {
+                        const alreadyPresent = isMemberAttendedForActiveSlot(member.memberId);
+                        const isProcessing = attendingMemberId === member.memberId;
+
+                        return (
+                          <div
+                            key={member.memberId}
+                            className="p-3.5 flex items-center justify-between gap-3 hover:bg-amber-50/40 transition"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 font-extrabold text-xs flex items-center justify-center shrink-0">
+                                {member.firstName?.[0] || 'M'}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <h4 className="text-sm font-bold text-stone-900 truncate">
+                                    {member.fullName}
+                                  </h4>
+                                  <span className="font-mono text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
+                                    {member.memberId}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-stone-500 truncate">
+                                  {member.memberCategory} Youth • {member.committees.join(', ') || 'Youth Member'}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* One-Click Auto-Present Button */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleQuickAttend(member)}
+                                disabled={alreadyPresent || isProcessing}
+                                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
+                                  alreadyPresent
+                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default'
+                                    : isProcessing
+                                    ? 'bg-amber-400 text-amber-950 animate-pulse cursor-wait'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:scale-102 cursor-pointer'
+                                }`}
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>
+                                  {alreadyPresent
+                                    ? '✓ Present (Recorded)'
+                                    : isProcessing
+                                    ? 'Recording...'
+                                    : '✓ Attend (Mark Present)'}
+                                </span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveMember(member);
+                                  setIsStatusOpen(true);
+                                }}
+                                className="px-2.5 py-2 rounded-xl text-xs font-semibold text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition cursor-pointer"
+                                title="View attendance card"
+                              >
+                                Profile
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {/* Quick Attendance Success Toast Notification */}
+                {attendSuccessToast && (
+                  <div className="mt-3 p-4 rounded-2xl bg-emerald-500 text-charcoal-950 shadow-2xl border-2 border-emerald-300 flex items-center justify-between gap-3 animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-white text-emerald-700 flex items-center justify-center font-extrabold text-sm shrink-0 shadow-xs">
+                        ✓
+                      </div>
+                      <div>
+                        <p className="text-xs font-extrabold uppercase tracking-wide text-emerald-950">
+                          Attendance Auto-Recorded!
+                        </p>
+                        <p className="text-xs font-semibold text-charcoal-950">
+                          {attendSuccessToast.memberName} is marked <strong>PRESENT</strong> for {attendSuccessToast.gatheringName} ({attendSuccessToast.time})! Synced with Google Sheets.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAttendSuccessToast(null)}
+                      className="text-xs font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition cursor-pointer"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+
+                {attendErrorToast && (
+                  <div className="mt-3 p-3 rounded-xl bg-rose-600 text-white text-xs flex items-center justify-between gap-2 shadow-lg">
+                    <span>{attendErrorToast}</span>
+                    <button onClick={() => setAttendErrorToast(null)} className="p-1 cursor-pointer">✕</button>
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-cream-300/80">
@@ -604,6 +945,157 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 </div>
               );
             })}
+          </div>
+
+          {/* Official Locale Schedule & Officer Duty Roster */}
+          <div className="mt-14 bg-white rounded-3xl border border-cream-300 shadow-sm overflow-hidden p-6 sm:p-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-cream-200">
+              <div>
+                <span className="text-[11px] uppercase tracking-widest font-extrabold text-bronze-600 block mb-1">
+                  Official Locale Regular Schedule & Duty Assignment
+                </span>
+                <h3 className="font-serif text-2xl text-charcoal-950 font-normal">
+                  Prayer Meeting & Worship Service Roster
+                </h3>
+                <p className="text-xs text-charcoal-600 mt-1">
+                  Officers and MPRO assignees for each batch. Click any schedule to set it for attendance check-in.
+                </p>
+              </div>
+
+              {/* Tabs */}
+              <div className="inline-flex rounded-xl bg-cream-200/60 p-1 border border-cream-300 text-xs font-semibold self-start md:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterTab('ALL')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    scheduleFilterTab === 'ALL'
+                      ? 'bg-charcoal-900 text-white shadow-xs'
+                      : 'text-charcoal-700 hover:text-charcoal-950'
+                  }`}
+                >
+                  All Batches
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterTab('PM')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    scheduleFilterTab === 'PM'
+                      ? 'bg-charcoal-900 text-white shadow-xs'
+                      : 'text-charcoal-700 hover:text-charcoal-950'
+                  }`}
+                >
+                  Prayer Meeting
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterTab('WS')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    scheduleFilterTab === 'WS'
+                      ? 'bg-charcoal-900 text-white shadow-xs'
+                      : 'text-charcoal-700 hover:text-charcoal-950'
+                  }`}
+                >
+                  Worship Service
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterTab('TG')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    scheduleFilterTab === 'TG'
+                      ? 'bg-charcoal-900 text-white shadow-xs'
+                      : 'text-charcoal-700 hover:text-charcoal-950'
+                  }`}
+                >
+                  Thanksgiving
+                </button>
+              </div>
+            </div>
+
+            {/* Schedule List / Table */}
+            <div className="mt-6 divide-y divide-cream-200">
+              {LOKAL_REGULAR_SCHEDULES.filter((slot) => {
+                if (scheduleFilterTab === 'PM') return slot.eventType === 'Prayer Meeting';
+                if (scheduleFilterTab === 'WS') return slot.eventType === 'Worship Service';
+                if (scheduleFilterTab === 'TG') return slot.eventType === 'Thanksgiving';
+                return true;
+              }).map((slot) => {
+                const isCurrentActive = selectedGatheringSlot.slotId === slot.slotId;
+                return (
+                  <div
+                    key={slot.slotId}
+                    className={`py-4 px-3 sm:px-4 rounded-xl transition flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
+                      isCurrentActive
+                        ? 'bg-amber-50/80 border border-amber-300/80 shadow-xs'
+                        : 'hover:bg-cream-100/60'
+                    }`}
+                  >
+                    <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
+                      <div
+                        className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 text-center font-bold ${
+                          slot.eventType === 'Prayer Meeting'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                            : slot.eventType === 'Worship Service'
+                            ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                            : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                        }`}
+                      >
+                        <span className="text-[10px] uppercase font-bold">{slot.dayName}</span>
+                        <span className="text-xs font-black">{slot.time.split(' ')[0]}</span>
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-serif font-bold text-charcoal-950 text-base">
+                            {slot.eventName}
+                          </span>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-charcoal-700">
+                            {slot.dayFullName} · {slot.time}
+                          </span>
+                          {slot.hasZoom && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+                              <Video className="w-3 h-3 text-blue-600" />
+                              w/ Zoom
+                            </span>
+                          )}
+                          {isCurrentActive && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full animate-pulse">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Active in Check-In
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-charcoal-700">
+                          <div>
+                            <span className="font-bold text-bronze-700">MPRO Incharge: </span>
+                            <span className="text-charcoal-900 font-medium">{slot.mproIncharge}</span>
+                          </div>
+                          <div>
+                            <span className="font-bold text-bronze-700">Officers Assigned: </span>
+                            <span className="text-charcoal-900 font-medium">{slot.officersAssigned}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end lg:self-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSlotFromSchedule(slot)}
+                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          isCurrentActive
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
+                            : 'bg-charcoal-900 text-white hover:bg-bronze-600 shadow-xs'
+                        }`}
+                      >
+                        <UserCheck className="w-3.5 h-3.5" />
+                        <span>{isCurrentActive ? 'Selected (Check In)' : 'Select & Check-In'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
@@ -1043,6 +1535,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         members={members}
         onClose={() => setIsSearchOpen(false)}
         onSelectMember={handleSelectMember}
+        activeGatheringTitle={`${selectedGatheringSlot.eventName} (${selectedGatheringSlot.time})`}
+        onQuickAttend={handleQuickAttend}
+        isAlreadyAttended={isMemberAttendedForActiveSlot}
+      />
+
+      {/* Choice of Gathering Selector Modal */}
+      <GatheringSelectorModal
+        isOpen={isGatheringSelectorOpen}
+        onClose={() => setIsGatheringSelectorOpen(false)}
+        selectedSlot={selectedGatheringSlot}
+        onSelectSlot={(slot, isManual) => {
+          setSelectedGatheringSlot(slot);
+          setIsManualOverride(isManual);
+          if (slot.dayOfWeek === new Date().getDay()) {
+            setSelectedGatheringDate(formatDateYYYYMMDD(new Date()));
+          } else {
+            const today = new Date();
+            const diff = (slot.dayOfWeek - today.getDay() + 7) % 7 || 7;
+            const nextDate = new Date(today.getTime() + diff * 24 * 60 * 60 * 1000);
+            setSelectedGatheringDate(formatDateYYYYMMDD(nextDate));
+          }
+        }}
+        isManualOverride={isManualOverride}
       />
 
       {/* 2. Member Identity Verification Modal */}

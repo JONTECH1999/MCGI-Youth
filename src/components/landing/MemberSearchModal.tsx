@@ -8,6 +8,9 @@ interface MemberSearchModalProps {
   members: Member[];
   onClose: () => void;
   onSelectMember: (member: Member) => void;
+  activeGatheringTitle?: string;
+  onQuickAttend?: (member: Member) => Promise<void>;
+  isAlreadyAttended?: (memberId: string) => boolean;
 }
 
 export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
@@ -16,9 +19,13 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
   members,
   onClose,
   onSelectMember,
+  activeGatheringTitle,
+  onQuickAttend,
+  isAlreadyAttended,
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery);
+  const [attendingMemberId, setAttendingMemberId] = useState<string | null>(null);
 
   if (initialQuery !== prevInitialQuery) {
     setPrevInitialQuery(initialQuery);
@@ -49,16 +56,27 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
 
     return members
       .filter((m) => {
-        const full = m.fullName.toLowerCase();
-        const first = m.firstName.toLowerCase();
-        const last = m.lastName.toLowerCase();
-        const id = m.memberId.toLowerCase();
+        const full = (m.fullName || '').toLowerCase();
+        const first = (m.firstName || '').toLowerCase();
+        const last = (m.lastName || '').toLowerCase();
+        const id = (m.memberId || '').toLowerCase();
         return full.includes(q) || first.includes(q) || last.includes(q) || id.includes(q);
       })
-      .slice(0, 15);
+      .slice(0, 20);
   }, [searchTerm, members]);
 
   if (!isOpen) return null;
+
+  const handleAttendClick = async (e: React.MouseEvent, member: Member) => {
+    e.stopPropagation();
+    if (!onQuickAttend) return;
+    setAttendingMemberId(member.memberId);
+    try {
+      await onQuickAttend(member);
+    } finally {
+      setAttendingMemberId(null);
+    }
+  };
 
   return (
     <div
@@ -78,7 +96,14 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
               <span className="p-1.5 rounded-lg bg-amber-100 text-amber-800">
                 <Search className="w-4 h-4" />
               </span>
-              <h3 className="text-lg font-bold text-stone-900">Search My Name</h3>
+              <div>
+                <h3 className="text-lg font-bold text-stone-900 leading-tight">Search Name & Attend</h3>
+                {activeGatheringTitle && (
+                  <p className="text-xs text-amber-800 font-semibold mt-0.5">
+                    For: {activeGatheringTitle}
+                  </p>
+                )}
+              </div>
             </div>
             <button
               onClick={onClose}
@@ -95,7 +120,7 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
               autoFocus
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Type your name or Member ID..."
+              placeholder="Type your name (e.g. Agatha, Aljon, M-1001)..."
               className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-stone-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 text-stone-900 placeholder-stone-400 text-base outline-none shadow-xs"
             />
             <Search className="w-5 h-5 text-stone-400 absolute left-3.5 top-3.5" />
@@ -103,7 +128,7 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
 
           <p className="mt-2.5 text-xs text-stone-500 flex items-center space-x-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Privacy mode: Contact numbers and addresses are hidden until verification.</span>
+            <span>Tap "Attend" next to your name to automatically mark yourself Present!</span>
           </p>
         </div>
 
@@ -115,15 +140,15 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
                 <Search className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-sm font-bold text-stone-800">Type your first name, last name, or Member ID</p>
-                <p className="text-xs text-stone-400 mt-0.5">Quickly find your personal standing and attendance log</p>
+                <p className="text-sm font-bold text-stone-800">Type your first name or Member ID</p>
+                <p className="text-xs text-stone-400 mt-0.5">Quickly find your name and record your attendance</p>
               </div>
 
               {/* Sample Quick Fill Chips for easy exploration */}
               <div className="pt-2">
                 <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Try quick lookup:</p>
                 <div className="flex flex-wrap justify-center gap-1.5">
-                  {members.slice(0, 4).map((m) => (
+                  {members.slice(0, 6).map((m) => (
                     <button
                       key={m.memberId}
                       type="button"
@@ -145,39 +170,72 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
               </p>
             </div>
           ) : (
-            filteredMembers.map((member) => (
-              <div
-                key={member.memberId}
-                onClick={() => onSelectMember(member)}
-                className="py-3 px-3.5 rounded-2xl hover:bg-amber-50/80 transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer group hover:-translate-y-0.5 hover:shadow-xs border border-transparent hover:border-amber-200/80"
-              >
-                <div className="flex items-center space-x-3.5 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 group-hover:bg-amber-800 group-hover:text-white transition-all duration-200 flex items-center justify-center font-extrabold text-sm shrink-0 shadow-2xs">
-                    {member.firstName.charAt(0)}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-bold text-stone-900 group-hover:text-amber-900 truncate">
-                      {member.fullName}
-                    </h4>
-                    <div className="flex items-center space-x-2 text-xs text-stone-500 mt-0.5">
-                      <span className="font-mono text-[11px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60">
-                        {maskMemberId(member.memberId)}
-                      </span>
-                      <span>•</span>
-                      <span>{member.memberCategory} Youth</span>
+            filteredMembers.map((member) => {
+              const alreadyPresent = isAlreadyAttended ? isAlreadyAttended(member.memberId) : false;
+              const isProcessing = attendingMemberId === member.memberId;
+
+              return (
+                <div
+                  key={member.memberId}
+                  onClick={() => onSelectMember(member)}
+                  className="py-3 px-3.5 rounded-2xl hover:bg-amber-50/80 transition-all duration-200 flex items-center justify-between gap-3 cursor-pointer group hover:-translate-y-0.5 hover:shadow-xs border border-transparent hover:border-amber-200/80"
+                >
+                  <div className="flex items-center space-x-3.5 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 group-hover:bg-amber-800 group-hover:text-white transition-all duration-200 flex items-center justify-center font-extrabold text-sm shrink-0 shadow-2xs">
+                      {member.firstName.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-stone-900 group-hover:text-amber-900 truncate">
+                          {member.fullName}
+                        </h4>
+                        {alreadyPresent && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            ✓ PRESENT
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 text-xs text-stone-500 mt-0.5">
+                        <span className="font-mono text-[11px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60">
+                          {member.memberId}
+                        </span>
+                        <span>•</span>
+                        <span>{member.memberCategory} Youth</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <button
-                  type="button"
-                  className="btn-shimmer inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-stone-100 group-hover:bg-amber-800 text-stone-700 group-hover:text-white text-xs font-bold transition-all duration-200 shrink-0 shadow-2xs group-hover:shadow-md"
-                >
-                  <span>Select</span>
-                  <ArrowRight className="w-3.5 h-3.5 transform group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            ))
+                  <div className="flex items-center gap-2 shrink-0">
+                    {onQuickAttend && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleAttendClick(e, member)}
+                        disabled={alreadyPresent || isProcessing}
+                        className={`inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all duration-200 shadow-2xs ${
+                          alreadyPresent
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                            : isProcessing
+                            ? 'bg-amber-400 text-amber-950 animate-pulse cursor-wait'
+                            : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md cursor-pointer'
+                        }`}
+                      >
+                        <span>{alreadyPresent ? '✓ Recorded' : isProcessing ? 'Marking...' : '✓ Attend'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectMember(member)}
+                      className="inline-flex items-center space-x-1 px-3 py-2 rounded-xl bg-stone-100 group-hover:bg-stone-200 text-stone-700 text-xs font-semibold transition cursor-pointer"
+                      title="View attendance record & profile"
+                    >
+                      <span>Profile</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
           )}
         </div>
 
