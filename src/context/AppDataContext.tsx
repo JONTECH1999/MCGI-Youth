@@ -11,6 +11,7 @@ import { GasApiService, GasApiResponse } from '../services/gasApi';
 import { StatsService } from '../services/statsService';
 import { AttendanceService } from '../services/attendanceService';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
+import { INITIAL_MEMBERS, INITIAL_ATTENDANCE_RECORDS } from '../data/sampleMembers';
 import { useAuth } from './AuthContext';
 
 interface AppDataContextType {
@@ -77,6 +78,7 @@ interface AppDataContextType {
   // Backup & Restore
   exportBackup: () => string;
   restoreBackup: (json: string) => boolean;
+  resetToOfficialMembers: () => void;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -818,6 +820,15 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return success;
   };
 
+  const resetToOfficialMembers = () => {
+    StorageService.saveMembers(INITIAL_MEMBERS);
+    setMembers(INITIAL_MEMBERS);
+    StorageService.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
+    setAttendance(INITIAL_ATTENDANCE_RECORDS);
+    StorageService.addLog(operatorName, 'INITIALIZE', 'MEMBERS', 'Reset local database to official 66 youth members roster.');
+    setLogs(StorageService.getLogs());
+  };
+
   return (
     <AppDataContext.Provider
       value={{
@@ -859,6 +870,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         saveReportSnapshot,
         exportBackup,
         restoreBackup,
+        resetToOfficialMembers,
       }}
     >
       {children}
