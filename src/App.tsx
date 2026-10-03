@@ -3,7 +3,7 @@ import { useAuth, AuthProvider } from './context/AuthContext';
 import { OfflineProvider } from './context/OfflineContext';
 import { AppDataProvider } from './context/AppDataContext';
 import { Layout } from './components/layout/Layout';
-import { NavItemKey } from './components/layout/Sidebar';
+import { NavItemKey, OFFICER_ALLOWED_TABS } from './components/layout/Sidebar';
 
 // Pages
 import { LandingPage } from './pages/LandingPage';
@@ -63,7 +63,7 @@ const parseLocation = (): { view: 'public' | 'admin'; tab: NavItemKey } => {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, isAdmin, logout } = useAuth();
   const [navigation, setNavigation] = useState<{ view: 'public' | 'admin'; tab: NavItemKey }>(() => parseLocation());
 
   const viewMode = navigation.view;
@@ -82,8 +82,16 @@ const AppContent: React.FC = () => {
   };
 
   const handleSelectTab = (tab: NavItemKey) => {
-    navigateTo('admin', tab);
+    navigateTo('admin', isAdmin || OFFICER_ALLOWED_TABS.includes(tab) ? tab : 'dashboard');
   };
+
+  useEffect(() => {
+    if (!isAuthenticated || isAdmin || OFFICER_ALLOWED_TABS.includes(currentTab)) return;
+    setNavigation({ view: 'admin', tab: 'dashboard' });
+    localStorage.setItem('mcgi_view_mode', 'admin');
+    localStorage.setItem('mcgi_active_tab', 'dashboard');
+    window.location.hash = 'admin/dashboard';
+  }, [currentTab, isAuthenticated, isAdmin]);
 
   // Sync state on hash change (e.g. browser Back / Forward buttons)
   useEffect(() => {

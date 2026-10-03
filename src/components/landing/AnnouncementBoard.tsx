@@ -5,15 +5,32 @@ import { Announcement } from '../../types/announcement';
 interface AnnouncementBoardProps {
   announcements: Announcement[];
   onSelectAnnouncement: (announcement: Announcement) => void;
+  title?: string;
+  subtitle?: string;
+  limit?: number;
+  featuredAnnouncementId?: string;
 }
 
 export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   announcements,
   onSelectAnnouncement,
+  title,
+  subtitle,
+  limit,
+  featuredAnnouncementId,
 }) => {
   const [filter, setFilter] = useState<'All' | 'Featured'>('All');
 
-  const published = announcements.filter((a) => a.status === 'Published');
+  const published = announcements
+    .filter((a) => a.status === 'Published')
+    .sort((a, b) => {
+      if (a.announcementId === featuredAnnouncementId) return -1;
+      if (b.announcementId === featuredAnnouncementId) return 1;
+      if (a.featured && !b.featured) return -1;
+      if (!a.featured && b.featured) return 1;
+      return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
+    })
+    .slice(0, limit ?? announcements.length);
   const displayed = filter === 'Featured' ? published.filter((a) => a.featured) : published;
 
   // Placeholder fallback image for announcements without image
@@ -30,10 +47,10 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
             <span>Official Digital Board</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-black text-stone-900 tracking-tight">
-            Announcements & Locale Circulars
+            {title || 'Announcements & Locale Circulars'}
           </h2>
           <p className="text-stone-600 text-sm sm:text-base max-w-2xl leading-relaxed">
-            Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.
+            {subtitle || 'Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.'}
           </p>
         </div>
 

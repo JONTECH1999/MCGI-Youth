@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useAppData } from '../../context/AppDataContext';
 import { useOffline } from '../../context/OfflineContext';
+import { useAuth } from '../../context/AuthContext';
 import { NavItemKey } from './Sidebar';
 
 interface TopbarProps {
@@ -35,6 +36,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   } = useAppData();
 
   const { isOnline, pendingSyncCount, syncNow, isSyncing: isFlushingQueue } = useOffline();
+  const { isAdmin } = useAuth();
 
   const getPageTitle = (tab: NavItemKey) => {
     switch (tab) {
@@ -66,17 +68,17 @@ export const Topbar: React.FC<TopbarProps> = ({
   const pageInfo = getPageTitle(currentTab);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 shadow-2xs">
+    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-cream-300 bg-cream-50/95 px-4 sm:px-6 shadow-2xs">
       <div className="flex items-center gap-3">
         <button
           onClick={onOpenMobile}
-          className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden focus:outline-hidden"
+          className="rounded-lg p-2 text-charcoal-700 hover:bg-cream-200 lg:hidden focus:outline-hidden"
           aria-label="Open sidebar"
         >
           <Menu className="h-5 w-5" />
         </button>
         <div>
-          <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-tight">
+          <h2 className="text-base sm:text-lg font-bold text-charcoal-950 leading-tight">
             {pageInfo.title}
           </h2>
           <p className="hidden md:block text-xs text-slate-500">{pageInfo.subtitle}</p>
@@ -99,48 +101,52 @@ export const Topbar: React.FC<TopbarProps> = ({
         )}
 
         {/* Google Sheets Connection Status */}
-        <button
-          onClick={() => onNavigateTab('google-sheets')}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
-            connectionStatus === 'Connected'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-              : connectionStatus === 'Checking'
-              ? 'bg-blue-50 border-blue-200 text-blue-700'
-              : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
-          }`}
-          title="Click to manage Google Sheets database connection"
-        >
-          <FileSpreadsheet className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">
-            {connectionStatus === 'Connected' ? 'Sheets Connected' : 'Google Sheets'}
-          </span>
-          <span
-            className={`h-2 w-2 rounded-full ${
+        {isAdmin && (
+          <button
+            onClick={() => onNavigateTab('google-sheets')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${
               connectionStatus === 'Connected'
-                ? 'bg-emerald-500'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
                 : connectionStatus === 'Checking'
-                ? 'bg-blue-500 animate-ping'
-                : 'bg-amber-400'
+                ? 'bg-cream-100 border-cream-300 text-bronze-700'
+                : 'bg-cream-100 border-cream-300 text-charcoal-700 hover:bg-cream-200'
             }`}
-          />
-        </button>
+            title="Click to manage Google Sheets database connection"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">
+              {connectionStatus === 'Connected' ? 'Sheets Connected' : 'Google Sheets'}
+            </span>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                connectionStatus === 'Connected'
+                  ? 'bg-emerald-500'
+                  : connectionStatus === 'Checking'
+                  ? 'bg-bronze-500 animate-ping'
+                  : 'bg-amber-400'
+              }`}
+            />
+          </button>
+        )}
 
         {/* Sync / Refresh Button */}
-        <button
-          onClick={() => syncFromGoogleSheets()}
-          disabled={isSyncing}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-2xs hover:bg-slate-50 focus:outline-hidden disabled:opacity-50"
-          title={lastSyncTimestamp ? `Last sync: ${new Date(lastSyncTimestamp).toLocaleTimeString()}` : 'Sync with Google Sheets'}
-        >
-          <RefreshCw className={`h-3.5 w-3.5 text-slate-500 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
-          <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Refresh'}</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => syncFromGoogleSheets()}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-cream-300 bg-white px-3 py-1.5 text-xs font-medium text-charcoal-800 shadow-2xs hover:bg-cream-100 focus:outline-hidden disabled:opacity-50"
+            title={lastSyncTimestamp ? `Last sync: ${new Date(lastSyncTimestamp).toLocaleTimeString()}` : 'Sync with Google Sheets'}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 text-charcoal-500 ${isSyncing ? 'animate-spin text-bronze-700' : ''}`} />
+            <span className="hidden sm:inline">{isSyncing ? 'Syncing...' : 'Refresh'}</span>
+          </button>
+        )}
 
         {/* Quick Fast Attendance Button */}
         {currentTab !== 'attendance' && (
           <button
             onClick={() => onNavigateTab('attendance')}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-blue-700 focus:outline-hidden cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-charcoal-900 px-3 py-1.5 text-xs font-semibold text-white shadow-2xs hover:bg-bronze-600 focus:outline-hidden cursor-pointer"
           >
             <Zap className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">Take Attendance</span>
@@ -151,7 +157,7 @@ export const Topbar: React.FC<TopbarProps> = ({
         {onBackToPublic && (
           <button
             onClick={onBackToPublic}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-amber-800 hover:bg-amber-900 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-bronze-500 hover:bg-bronze-600 px-3 py-1.5 text-xs font-bold text-charcoal-950 shadow-2xs transition cursor-pointer"
             title="Switch to public member landing page"
           >
             <Globe className="h-3.5 w-3.5 text-amber-300" />

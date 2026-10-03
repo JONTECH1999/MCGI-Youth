@@ -13,6 +13,7 @@ import {
 import {
   RegularGatheringSlot,
   LOKAL_REGULAR_SCHEDULES,
+  compareRegularGatheringSlots,
   getAutomatedGatheringSlot,
 } from '../../data/lokalSchedule';
 
@@ -38,7 +39,7 @@ export const GatheringSelectorModal: React.FC<GatheringSelectorModalProps> = ({
   const filteredSlots = LOKAL_REGULAR_SCHEDULES.filter((s) => {
     if (activeTab === 'All') return true;
     return s.eventType === activeTab;
-  });
+  }).sort(compareRegularGatheringSlots);
 
   const handleResetToAuto = () => {
     const auto = getAutomatedGatheringSlot();
@@ -61,12 +62,9 @@ export const GatheringSelectorModal: React.FC<GatheringSelectorModalProps> = ({
         <div className="p-6 border-b border-stone-200 bg-stone-50/80">
           <div className="flex items-center justify-between pb-3">
             <div>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-200">
-                <Calendar className="w-3 h-3" />
-                Locale Regular Schedule
-              </span>
-              <h3 className="text-xl font-bold text-stone-900 mt-1">
-                Choice of Sacred Gathering
+              <h3 className="flex items-center gap-2 text-xl font-bold text-stone-900">
+                <Calendar className="w-5 h-5 text-amber-800" />
+                MCGI Ascoville Gathering Schedule
               </h3>
               <p className="text-xs text-stone-500">
                 Pick your preferred gathering batch to mark attendance or view duty assignments.

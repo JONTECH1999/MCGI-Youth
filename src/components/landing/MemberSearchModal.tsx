@@ -120,7 +120,7 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
               autoFocus
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Type your name (e.g. Agatha, Aljon, M-1001)..."
+              placeholder="Search your name or Member ID (e.g. B. JOHN, M-0000)..."
               className="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-stone-300 focus:border-amber-600 focus:ring-2 focus:ring-amber-500/20 text-stone-900 placeholder-stone-400 text-base outline-none shadow-xs"
             />
             <Search className="w-5 h-5 text-stone-400 absolute left-3.5 top-3.5" />
@@ -128,7 +128,7 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
 
           <p className="mt-2.5 text-xs text-stone-500 flex items-center space-x-1.5">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Tap "Attend" next to your name to automatically mark yourself Present!</span>
+            <span>Search by first or last name, or Member ID. Select your match, then tap Attend to record your presence.</span>
           </p>
         </div>
 
@@ -140,24 +140,15 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
                 <Search className="w-6 h-6" />
               </div>
               <div>
-                <p className="text-sm font-bold text-stone-800">Type your first name or Member ID</p>
-                <p className="text-xs text-stone-400 mt-0.5">Quickly find your name and record your attendance</p>
+                <p className="text-sm font-bold text-stone-800">Find your attendance record</p>
+                <p className="text-xs text-stone-500 mt-0.5">Search by first name, last name, or Member ID. Choose the matching record to continue.</p>
               </div>
 
-              {/* Sample Quick Fill Chips for easy exploration */}
-              <div className="pt-2">
-                <p className="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-2">Try quick lookup:</p>
-                <div className="flex flex-wrap justify-center gap-1.5">
-                  {members.slice(0, 6).map((m) => (
-                    <button
-                      key={m.memberId}
-                      type="button"
-                      onClick={() => setSearchTerm(m.firstName)}
-                      className="px-2.5 py-1 rounded-lg bg-stone-100 hover:bg-amber-100 text-stone-700 hover:text-amber-900 border border-stone-200 text-xs font-medium transition cursor-pointer"
-                    >
-                      {m.fullName}
-                    </button>
-                  ))}
+              <div className="pt-1">
+                <p className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider mb-2">Example searches</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-xs text-stone-600">B. JOHN</span>
+                  <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-xs text-stone-600 font-mono">M-0000</span>
                 </div>
               </div>
             </div>

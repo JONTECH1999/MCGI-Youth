@@ -31,22 +31,12 @@ export const DEFAULT_GATHERINGS: GatheringItem[] = [
     image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
     type: 'tgp',
   },
-  {
-    id: 'gath-4',
-    num: '04',
-    title: 'Youth Christian Fellowship',
-    subtitle: 'KKTK Activities & Outreach',
-    date: 'Monthly Gatherings & Missions',
-    desc: 'Dynamic brotherhood events, charitable missions, bible studies, choir practice, and community service.',
-    image: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80',
-    type: 'special_event',
-  },
 ];
 
 export const DEFAULT_LANDING_PAGE_CONFIG: LandingPageConfig = {
   chapterName: 'MCGI YOUTH • LOCAL OF ASCOVILLE',
-  heroTitle: 'Welcome, Youth!',
-  heroSubtitle: 'Stay connected with our upcoming activities, announcements, and your attendance records.',
+  heroTitle: 'Find your name and check in',
+  heroSubtitle: 'See today’s gathering details, then search your name to record attendance.',
   heroImageUrl: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1920&q=80',
   aboutImageUrl: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=80',
   processImageUrl: 'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80',

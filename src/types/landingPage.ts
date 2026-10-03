@@ -25,6 +25,7 @@ export interface LandingPageConfig {
   heroTitle: string;
   heroSubtitle: string;
   heroImageUrl: string;
+  heroImages?: string[];
   aboutImageUrl?: string;
   processImageUrl?: string;
   gatherings?: GatheringItem[];

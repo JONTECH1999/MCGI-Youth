@@ -9,8 +9,7 @@ import {
   CheckCircle2,
   CheckCircle,
   Users,
-  ChevronLeft,
-  ChevronRight,
+  X,
   UserCheck,
   Shield,
   BookOpen,
@@ -28,9 +27,9 @@ import { Member } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { Announcement } from '../types/announcement';
 import { GatheringItem } from '../types/landingPage';
+import { COMMITTEE_METADATA } from '../data/sampleCommittees';
 import {
   RegularGatheringSlot,
-  LOKAL_REGULAR_SCHEDULES,
   getAutomatedGatheringSlot,
   resolveOrCreateSlotEventSchedule,
   formatDateYYYYMMDD,
@@ -42,12 +41,41 @@ import { MemberVerificationModal } from '../components/landing/MemberVerificatio
 import { MemberStatusModal } from '../components/landing/MemberStatusModal';
 import { EventDetailsModal } from '../components/landing/EventDetailsModal';
 import { AnnouncementDetailsModal } from '../components/landing/AnnouncementDetailsModal';
+import { AnnouncementBoard } from '../components/landing/AnnouncementBoard';
 import { EventCheckInModal } from '../components/landing/EventCheckInModal';
 import { AdminLoginModal } from '../components/landing/AdminLoginModal';
 import { GatheringSelectorModal } from '../components/landing/GatheringSelectorModal';
 
 interface LandingPageProps {
   onEnterAdmin: () => void;
+}
+
+interface HeroCardDragState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startOffsetX: number;
+  startOffsetY: number;
+  baseLeft: number;
+  baseTop: number;
+  width: number;
+  height: number;
+  bounds: DOMRect;
+  moved: boolean;
+}
+
+interface CommitteeRosterMember {
+  name: string;
+  image: string;
+  isContactPerson?: boolean;
+}
+
+interface YouthCommitteeCard {
+  name: string;
+  alias: string;
+  description: string;
+  image: string;
+  members: CommitteeRosterMember[];
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
@@ -63,6 +91,94 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     saveEvent,
     saveSchedule,
   } = useAppData();
+
+  const fallbackHeroImage = 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1920&q=80';
+  const heroSlides = landingPageConfig?.heroImages?.filter(Boolean).length
+    ? landingPageConfig.heroImages.filter(Boolean)
+    : [landingPageConfig?.heroImageUrl || fallbackHeroImage];
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
+  const heroSurfaceRef = useRef<HTMLDivElement>(null);
+  const heroCardOffsetRef = useRef({ x: 0, y: 0 });
+  const heroCardDragRef = useRef<HeroCardDragState | null>(null);
+  const suppressHeroCardClickRef = useRef(false);
+  const [isHeroCardDragging, setIsHeroCardDragging] = useState(false);
+
+  const handleHeroCardPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    const surface = heroSurfaceRef.current;
+    if (!surface) return;
+
+    const cardRect = event.currentTarget.getBoundingClientRect();
+    const surfaceRect = surface.getBoundingClientRect();
+    const offset = heroCardOffsetRef.current;
+    heroCardDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startOffsetX: offset.x,
+      startOffsetY: offset.y,
+      baseLeft: cardRect.left - offset.x,
+      baseTop: cardRect.top - offset.y,
+      width: cardRect.width,
+      height: cardRect.height,
+      bounds: surfaceRect,
+      moved: false,
+    };
+  };
+
+  const handleHeroCardPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = heroCardDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - drag.startClientX;
+    const deltaY = event.clientY - drag.startClientY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+
+    if (!drag.moved) {
+      drag.moved = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setIsHeroCardDragging(true);
+    }
+    event.preventDefault();
+
+    const minX = drag.bounds.left + 12 - drag.baseLeft;
+    const maxX = drag.bounds.right - 12 - drag.baseLeft - drag.width;
+    const minY = drag.bounds.top + 12 - drag.baseTop;
+    const maxY = drag.bounds.bottom - 12 - drag.baseTop - drag.height;
+    const x = Math.max(minX, Math.min(maxX, drag.startOffsetX + deltaX));
+    const y = Math.max(minY, Math.min(maxY, drag.startOffsetY + deltaY));
+    heroCardOffsetRef.current = { x, y };
+    event.currentTarget.style.translate = `${x}px ${y}px`;
+  };
+
+  const finishHeroCardPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = heroCardDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      suppressHeroCardClickRef.current = true;
+      window.setTimeout(() => {
+        suppressHeroCardClickRef.current = false;
+      }, 0);
+    }
+    heroCardDragRef.current = null;
+    setIsHeroCardDragging(false);
+  };
+
+  const handleHeroCardClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressHeroCardClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressHeroCardClickRef.current = false;
+  };
+
+  useEffect(() => {
+    setHeroImageIndex((index) => index % heroSlides.length);
+    if (heroSlides.length < 2) return;
+    const timer = window.setInterval(() => {
+      setHeroImageIndex((index) => (index + 1) % heroSlides.length);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [heroSlides.length]);
 
   // Ambient cursor spotlight effect
   const spotlightRef = useRef<HTMLDivElement>(null);
@@ -99,9 +215,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     }
   }, [members]);
 
-  // Testimonials carousel state
-  const [testimonialIndex, setTestimonialIndex] = useState(0);
-
   // Modals state
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [initialSearchQuery, setInitialSearchQuery] = useState('');
@@ -119,6 +232,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
   // Admin login modal state
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [selectedCommitteeName, setSelectedCommitteeName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedCommitteeName) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedCommitteeName(null);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [selectedCommitteeName]);
 
   // Quick search input in hero
   const [heroSearchText, setHeroSearchText] = useState('');
@@ -146,19 +269,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     }, 60000);
     return () => clearInterval(timer);
   }, [isManualOverride, selectedGatheringSlot.slotId, selectedGatheringDate]);
-
-  // Schedule roster filter tab
-  const [scheduleFilterTab, setScheduleFilterTab] = useState<'ALL' | 'PM' | 'WS' | 'TG'>('ALL');
-
-  const handleSelectSlotFromSchedule = (slot: RegularGatheringSlot) => {
-    setSelectedGatheringSlot(slot);
-    setSelectedGatheringDate(formatDateYYYYMMDD(new Date()));
-    setIsManualOverride(true);
-    const element = document.getElementById('hero-attendance');
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
 
   // Check if member is already marked Present for active slot & date
   const isMemberAttendedForActiveSlot = (memberId: string): boolean => {
@@ -264,6 +374,24 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     setIsSearchOpen(true);
   };
 
+  const handleSelectRegularSlotForCheckIn = (slot: RegularGatheringSlot) => {
+    const now = new Date();
+    const [hours, minutes] = slot.time24.split(':').map(Number);
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    let daysUntilSlot = (slot.dayOfWeek - now.getDay() + 7) % 7;
+
+    if (daysUntilSlot === 0 && hours * 60 + minutes <= currentMinutes) {
+      daysUntilSlot = 7;
+    }
+
+    const scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSlot);
+    setSelectedGatheringSlot(slot);
+    setSelectedGatheringDate(formatDateYYYYMMDD(scheduledDate));
+    setIsManualOverride(true);
+    setInitialSearchQuery(activeMember?.fullName || '');
+    setIsSearchOpen(true);
+  };
+
   const handleSelectMember = (member: Member) => {
     setIsSearchOpen(false);
     if (landingPageConfig.verificationMethod !== 'simple') {
@@ -309,50 +437,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     setSelectedEvent(event);
   };
 
-  // Testimonials data
-  const testimonies = [
-    {
-      quote:
-        'Being part of the MCGI Youth in the Local of Ascoville has kept my spiritual compass grounded. Having a clear and reliable check-in portal makes staying accountable to our gatherings effortless.',
-      author: 'Bro. Joshua Ramos',
-      role: 'Youth Choir Member · Local of Ascoville',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
-    },
-    {
-      quote:
-        'The fellowship and Christian community across our locale inspire us to serve with joy. Checking our attendance and upcoming schedules has never been this smooth and dignified.',
-      author: 'Sis. Andrea Santos',
-      role: 'Teatro Kristiano · Local of Ascoville',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
-    },
-    {
-      quote:
-        'As working youth, having transparent access to our prayer meeting schedules and thanksgiving records keeps us aligned with God’s work no matter how hectic school or work gets.',
-      author: 'Bro. Mark Villanueva',
-      role: 'Outreach Volunteer · Local of Ascoville',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
-    },
-    {
-      quote:
-        'The dedication of our locale coordinators and secretariat is inspiring. This portal reflects genuine professionalism, orderliness, and Christian brotherhood.',
-      author: 'Sis. Patricia Cruz',
-      role: 'Secretariat Committee · Local of Ascoville',
-      avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=200&q=80',
-    },
-  ];
-
-  const nextTestimonial = () => {
-    setTestimonialIndex((prev) => (prev + 1) % testimonies.length);
-  };
-
-  const prevTestimonial = () => {
-    setTestimonialIndex((prev) => (prev - 1 + testimonies.length) % testimonies.length);
-  };
-
   // Sacred Gatherings (dynamic from config or defaults)
   const activeGatherings: GatheringItem[] = React.useMemo(() => {
-    if (landingPageConfig?.gatherings && landingPageConfig.gatherings.length > 0) {
-      return landingPageConfig.gatherings;
+    const configuredGatherings = landingPageConfig?.gatherings?.filter(
+      (gathering) => gathering.title !== 'Youth Christian Fellowship'
+    );
+    if (configuredGatherings?.length) {
+      return configuredGatherings;
     }
     return [
       {
@@ -391,66 +482,161 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
           'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=800&q=80',
         type: 'tgp',
       },
-      {
-        id: 'gath-4',
-        num: '04',
-        title: 'Youth Christian Fellowship',
-        subtitle: 'KKTK Activities & Outreach',
-        date: 'Monthly Gatherings & Missions',
-        desc: 'Dynamic brotherhood events, charitable missions, bible studies, choir practice, and community service.',
-        image:
-          landingPageConfig?.gatheringImages?.fellowship ||
-          'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80',
-        type: 'special_event',
-      },
     ];
   }, [landingPageConfig]);
 
-  // Leadership Team (6 members)
+  // Ascoville Youth Officer Lineup
   const committeeLeaders = [
     {
-      name: 'Bro. Daniel Ramos',
-      role: 'Ascoville Youth Coordinator',
-      area: 'Local of Ascoville',
-      experience: 'Youth Leadership · 8 Years in Service',
+      name: 'Bro. Aljon Alonzo',
+      role: 'President',
+      area: 'Executive Board',
+      experience: 'Local of Ascoville',
       image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=600&q=80',
     },
     {
-      name: 'Sis. Abigail Mendoza',
-      role: 'Ascoville Attendance Secretary',
-      area: 'Secretariat & Records',
-      experience: 'Data Management · 5 Years in Service',
-      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      name: 'Bro. Michael Angelo Tan',
-      role: 'Youth Choir Coordinator',
-      area: 'Music Ministry',
-      experience: 'Choral Conducting · 7 Years in Service',
+      name: 'Bro. Dhave Tuliao',
+      role: 'VP Internal',
+      area: 'Executive Board',
+      experience: 'Local of Ascoville',
       image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
     },
     {
-      name: 'Sis. Camille Evangelista',
-      role: 'Teatro Kristiano Coordinator',
-      area: 'Creative & Deaf Ministry',
-      experience: 'Arts & Sign Language · 6 Years in Service',
-      image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      name: 'Bro. Christian Reyes',
-      role: 'Community Outreach Head',
-      area: 'Charity & Civic Action',
-      experience: 'Public Service · 5 Years in Service',
+      name: 'Bro. Exur Gundaya',
+      role: 'VP External',
+      area: 'Executive Board',
+      experience: 'Local of Ascoville',
       image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80',
     },
     {
-      name: 'Bro. Ethan James Lopez',
-      role: 'Ascoville Tech & IT Secretary',
-      area: 'Systems & Infrastructure',
-      experience: 'Google Cloud & Systems · 4 Years in Service',
+      name: 'Sis. Careline M. Igay',
+      role: 'Admin Records',
+      area: 'Administration',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Florwyn Nicole Formilleza',
+      role: 'Admin Membership',
+      area: 'Administration',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Jaira',
+      role: 'Admin Communication',
+      area: 'Administration',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Bro. Eman Sumawang',
+      role: 'Finance Treasurer',
+      area: 'Finance',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Angelica Alborte',
+      role: 'Finance Auditor',
+      area: 'Finance',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Hyacinth Tomias',
+      role: 'Finance Auditor',
+      area: 'Finance',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Bro. Earl John Oasan',
+      role: 'Project Coordinator',
+      area: 'Projects',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Bro. Vincent Nuñez',
+      role: 'Operations - Events',
+      area: 'Operations',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Position Open',
+      role: 'Operations - Media Tech',
+      area: 'Operations',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Madel Sabandeja',
+      role: 'Operations - SocMed',
+      area: 'Operations',
+      experience: 'Local of Ascoville',
+      image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+    },
+    {
+      name: 'Sis. Celestina Igay',
+      role: 'Operations - Editor',
+      area: 'Operations',
+      experience: 'Local of Ascoville',
       image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=600&q=80',
     },
   ];
+
+  const youthCommittees: YouthCommitteeCard[] = [
+    {
+      name: 'Guest Coordinators',
+      alias: 'GCOS',
+      description: COMMITTEE_METADATA['Guest Coordinators'].description,
+      image: 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=800&q=80',
+      members: [
+        { name: 'Sis. Sharmaine', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80', isContactPerson: true },
+        { name: 'Bro. Aljon', image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Bro. David', image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Bro. Christian', image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Bro. Leander', image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Leslie', image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Nathalie', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Jasmine', image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Princess', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+      ],
+    },
+    {
+      name: 'Teatro Kristiano',
+      alias: 'TK',
+      description: COMMITTEE_METADATA['Teatro Kristiano'].description,
+      image: 'https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=800&q=80',
+      members: [
+        { name: 'Bro. Dhave Tuliao', image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=160&q=80', isContactPerson: true },
+        { name: 'Sis. Jaira', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Careline', image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Angelica', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Florwyn', image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=160&q=80' },
+        { name: 'Sis. Genna', image: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=160&q=80' },
+      ],
+    },
+    {
+      name: 'Choir',
+      alias: 'Music Ministry',
+      description: COMMITTEE_METADATA['Music Ministry'].description,
+      image: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80',
+      members: [],
+    },
+    {
+      name: 'Artist Guild',
+      alias: 'AG',
+      description: COMMITTEE_METADATA['Artist Guild'].description,
+      image: 'https://images.unsplash.com/photo-1513364776144-60967b0f800f?auto=format&fit=crop&w=800&q=80',
+      members: [],
+    },
+  ];
+  const selectedYouthCommittee = youthCommittees.find(
+    (committee) => committee.name === selectedCommitteeName
+  );
 
   return (
     <div className="relative min-h-screen bg-cream-100 text-charcoal-900 selection:bg-bronze-500 selection:text-white">
@@ -470,21 +656,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             </span>
           </a>
 
-          <nav className="hidden md:flex items-center space-x-8 text-sm font-medium text-charcoal-800">
-            <a href="#about" className="hover:text-bronze-600 transition">
-              About Locale
+          <nav className="hidden md:flex items-center space-x-4 lg:space-x-8 text-sm font-medium text-charcoal-800">
+            <a href="#announcements" className="hover:text-bronze-600 transition">
+              Announcements
             </a>
             <a href="#gatherings" className="hover:text-bronze-600 transition">
               Gatherings
             </a>
-            <a href="#process" className="hover:text-bronze-600 transition">
-              Check-In Process
-            </a>
             <a href="#leadership" className="hover:text-bronze-600 transition">
               Youth Officers
             </a>
-            <a href="#announcements" className="hover:text-bronze-600 transition">
-              Announcements
+            <a href="#youth-committees" className="hover:text-bronze-600 transition">
+              Youth Committees
             </a>
           </nav>
 
@@ -518,102 +701,112 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 <span>Search My Name</span>
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setIsAdminLoginOpen(true)}
+              title="Officer Portal Login"
+              aria-label="Officer Portal Login"
+              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-bronze-500 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-charcoal-950 transition hover:bg-bronze-400"
+            >
+              <Lock className="h-3.5 w-3.5" />
+              <span className="hidden xl:inline">Officer Portal Login</span>
+            </button>
           </div>
         </div>
       </header>
 
       {/* Hero Section matching Leagally */}
-      <section className="relative pt-32 pb-20 md:pt-44 md:pb-32 overflow-hidden border-b border-cream-300">
+      <section className="relative pt-24 pb-12 md:pt-32 md:pb-16 overflow-hidden border-b border-cream-300">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="relative rounded-3xl overflow-hidden bg-charcoal-950 text-white min-h-[560px] md:min-h-[640px] flex flex-col justify-between p-8 md:p-16">
+          <div ref={heroSurfaceRef} className="relative rounded-[2rem] overflow-hidden bg-charcoal-950 text-white min-h-[600px] md:min-h-[680px] flex flex-col justify-between p-6 sm:p-9 md:p-12 lg:p-16 shadow-[0_28px_80px_-32px_rgba(24,23,22,0.65)] ring-1 ring-charcoal-800/10">
             {/* Background Image & Overlay */}
             <div className="absolute inset-0 z-0">
-              <img
-                src={
-                  landingPageConfig?.heroImageUrl ||
-                  'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1920&q=80'
-                }
-                alt="MCGI Youth Gathering"
-                className="w-full h-full object-cover opacity-35 filter brightness-75"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950 via-charcoal-950/40 to-transparent"></div>
-            </div>
-
-            {/* Top Hero Pill */}
-            <div className="relative z-10">
-              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium tracking-wide uppercase bg-white/10 backdrop-blur-md border border-white/15 text-cream-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-bronze-400"></span>
-                MCGI Youth · Local of Ascoville
-              </span>
+              {heroSlides.map((image, index) => (
+                <img
+                  key={`${index}-${image.slice(0, 32)}`}
+                  src={image}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 motion-reduce:transition-none"
+                  style={{ opacity: index === heroImageIndex ? 1 : 0 }}
+                  onError={(event) => {
+                    event.currentTarget.src = fallbackHeroImage;
+                  }}
+                />
+              ))}
+              <div className="absolute inset-0 bg-gradient-to-r from-charcoal-950/55 via-charcoal-950/20 to-charcoal-950/5"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950/45 via-transparent to-charcoal-950/5"></div>
             </div>
 
             {/* Center Content */}
-            <div className="relative z-10 max-w-3xl my-auto py-12">
-              <h1 className="font-serif text-4xl sm:text-5xl md:text-7xl font-normal leading-[1.08] tracking-tight">
-                {landingPageConfig?.heroTitle ||
-                  'Excellence in Christian service, steadfast in every gathering.'}
-              </h1>
-              <p className="mt-6 text-base sm:text-lg text-cream-200/80 font-light max-w-xl">
-                {landingPageConfig?.heroSubtitle ||
-                  'A vibrant spiritual community for youth brethren of the Local of Ascoville — built to nurture faith, service, and attendance diligence.'}
-              </p>
+            <div
+              className={`relative z-10 mx-auto max-w-[460px] w-full my-auto rounded-2xl bg-charcoal-950/10 backdrop-blur-md border border-white/50 p-4 sm:p-5 md:p-6 shadow-2xl shadow-black/20 cursor-grab ${isHeroCardDragging ? 'cursor-grabbing' : ''}`}
+              role="group"
+              aria-label="Gathering and member search card. Hold and drag to move."
+              title="Hold and drag to move this card"
+              style={{ touchAction: 'none', translate: `${heroCardOffsetRef.current.x}px ${heroCardOffsetRef.current.y}px` }}
+              onPointerDown={handleHeroCardPointerDown}
+              onPointerMove={handleHeroCardPointerMove}
+              onPointerUp={finishHeroCardPointer}
+              onPointerCancel={finishHeroCardPointer}
+              onClickCapture={handleHeroCardClickCapture}
+            >
 
               {/* Automated Active Gathering & Duty Assignment Card */}
-              <div id="hero-attendance" className="mt-7 rounded-2xl bg-black/40 backdrop-blur-md border border-white/20 p-5 text-white max-w-2xl shadow-xl scroll-mt-28">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/15">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-bronze-500 text-charcoal-950 shadow-2xs">
-                      <span className="w-2 h-2 rounded-full bg-charcoal-950 animate-pulse"></span>
+              <div id="hero-attendance" className="w-full text-white scroll-mt-28">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-white/80">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
                       {isManualOverride ? 'Selected Gathering' : 'Today’s Gathering (Automated)'}
-                    </span>
-                    <span className="font-serif text-lg font-bold text-white">
+                    </p>
+                    <h2 className="mt-1 font-serif text-2xl sm:text-3xl font-semibold leading-tight text-white">
                       {selectedGatheringSlot.eventName}
-                    </span>
+                    </h2>
                   </div>
 
-                  {/* Change Button / Choice of Gathering */}
                   <button
                     type="button"
                     onClick={() => setIsGatheringSelectorOpen(true)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold bg-white/15 hover:bg-white/25 border border-white/25 text-cream-100 transition shadow-2xs cursor-pointer self-start sm:self-auto"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/30 text-white transition cursor-pointer self-start sm:self-auto shrink-0"
                     title="Change gathering or select another schedule batch"
                   >
-                    <Calendar className="w-3.5 h-3.5 text-bronze-300" />
-                    <span>Change Gathering ▾</span>
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Change Gathering</span>
                   </button>
                 </div>
 
                 {/* Day, Time & Duty Details */}
-                <div className="pt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                <div className="mt-4 pt-4 border-t border-white/25 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-bold text-white/75 tracking-[0.12em] block">
                       Schedule & Time
                     </span>
-                    <div className="flex items-center gap-1.5 mt-0.5 font-bold text-sm text-white">
-                      <Clock className="w-3.5 h-3.5 text-bronze-400" />
+                    <div className="flex items-center gap-1.5 mt-1 font-semibold text-sm text-white leading-snug">
+                      <Clock className="w-3.5 h-3.5 text-white/80 shrink-0" />
                       <span>{selectedGatheringSlot.dayFullName} · {selectedGatheringSlot.time}</span>
                     </div>
                     {selectedGatheringSlot.hasZoom && (
-                      <span className="inline-flex items-center gap-1 text-[10px] text-blue-300 font-semibold mt-1">
+                      <span className="inline-flex items-center gap-1 text-[10px] text-white/85 font-semibold mt-1">
                         <Video className="w-3 h-3" /> w/ Zoom link
                       </span>
                     )}
                   </div>
 
-                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase font-bold text-white/75 tracking-[0.12em] block">
                       MPRO Incharge
                     </span>
-                    <span className="font-semibold text-cream-100 block mt-0.5 text-xs">
+                    <span className="font-semibold text-white block mt-1 text-xs leading-relaxed">
                       {selectedGatheringSlot.mproIncharge}
                     </span>
                   </div>
 
-                  <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
-                    <span className="text-[10px] uppercase font-bold text-bronze-300 tracking-wider block">
+                  <div className="min-w-0 sm:col-span-2">
+                    <span className="text-[10px] uppercase font-bold text-white/75 tracking-[0.12em] block">
                       Officers Assigned
                     </span>
-                    <span className="font-semibold text-cream-100 block mt-0.5 text-xs">
+                    <span className="font-semibold text-white block mt-1 text-xs leading-relaxed">
                       {selectedGatheringSlot.officersAssigned}
                     </span>
                   </div>
@@ -621,17 +814,28 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </div>
 
               {/* Instant Search Name & Auto-Present Attendance Widget */}
-              <div className="mt-5 max-w-2xl relative">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <div className="relative flex-1">
+              <div className="relative search-attention mt-4 pt-4 border-t border-white/25">
+                <div className="relative">
+                    <span
+                      aria-hidden="true"
+                      className="search-notification-dot absolute -top-1.5 -right-1.5 z-10 h-3.5 w-3.5 rounded-full bg-red-500 border-2 border-white shadow-md"
+                    />
                     <input
+                      id="hero-member-search"
                       type="text"
+                      aria-label="Search by member name or ID"
                       value={heroSearchText}
                       onChange={(e) => setHeroSearchText(e.target.value)}
-                      placeholder="Type your name to attend (e.g. Agatha, Aljon, M-1001)..."
-                      className="w-full pl-11 pr-10 py-3.5 text-sm font-medium bg-white/15 backdrop-blur-md border border-white/25 rounded-2xl text-white placeholder-cream-300/70 focus:outline-none focus:ring-2 focus:ring-bronze-400 focus:bg-white/20 transition shadow-inner"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleOpenSearchWithQuery(heroSearchText.trim());
+                        }
+                      }}
+                      placeholder="Enter your name or Member ID..."
+                      className="search-attention-input w-full pl-11 pr-10 py-3.5 text-sm font-medium bg-charcoal-950/35 backdrop-blur-md border border-white/45 rounded-xl text-white placeholder:text-white/85 focus:outline-none focus:ring-2 focus:ring-bronze-300 focus:border-bronze-300/70 focus:bg-charcoal-950/55 transition shadow-inner"
                     />
-                    <Search className="w-4 h-4 text-cream-300 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Search className="w-4 h-4 text-white/85 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                     {heroSearchText && (
                       <button
                         type="button"
@@ -642,15 +846,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                         ✕
                       </button>
                     )}
-                  </div>
-
-                  <button
-                    onClick={() => handleOpenSearchWithQuery(heroSearchText.trim())}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3.5 text-xs uppercase tracking-widest font-bold rounded-2xl bg-bronze-500 hover:bg-bronze-400 text-charcoal-950 transition shrink-0 shadow-lg cursor-pointer"
-                  >
-                    <span>Search Roster</span>
-                    <ArrowUpRight className="w-4 h-4" />
-                  </button>
                 </div>
 
                 {/* Instant Live Matching Cards Pop-Up */}
@@ -678,34 +873,29 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                         return (
                           <div
                             key={member.memberId}
-                            className="p-3.5 flex items-center justify-between gap-3 hover:bg-amber-50/40 transition"
+                            className="p-3.5 flex flex-col gap-2.5 hover:bg-amber-50/40 transition"
                           >
-                            <div className="flex items-center gap-3 min-w-0">
+                            <div className="flex items-start gap-3 min-w-0">
                               <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 font-extrabold text-xs flex items-center justify-center shrink-0">
                                 {member.firstName?.[0] || 'M'}
                               </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <h4 className="text-sm font-bold text-stone-900 truncate">
-                                    {member.fullName}
-                                  </h4>
-                                  <span className="font-mono text-[10px] font-semibold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200">
-                                    {member.memberId}
-                                  </span>
-                                </div>
-                                <p className="text-[11px] text-stone-500 truncate">
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-sm font-bold text-stone-900 whitespace-normal break-words leading-snug">
+                                  {member.fullName}
+                                </h4>
+                                <p className="text-[11px] text-stone-500 whitespace-normal break-words mt-0.5">
                                   {member.memberCategory} Youth • {member.committees.join(', ') || 'Youth Member'}
                                 </p>
                               </div>
                             </div>
 
                             {/* One-Click Auto-Present Button */}
-                            <div className="flex items-center gap-2 shrink-0">
+                            <div className="flex items-center justify-end gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleQuickAttend(member)}
                                 disabled={alreadyPresent || isProcessing}
-                                className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
+                                className={`inline-flex flex-1 max-w-max items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
                                   alreadyPresent
                                     ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default'
                                     : isProcessing
@@ -729,7 +919,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                                   setActiveMember(member);
                                   setIsStatusOpen(true);
                                 }}
-                                className="px-2.5 py-2 rounded-xl text-xs font-semibold text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition cursor-pointer"
+                                className="shrink-0 px-2.5 py-2 rounded-xl text-xs font-semibold text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition cursor-pointer"
                                 title="View attendance card"
                               >
                                 Profile
@@ -776,35 +966,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 )}
               </div>
 
-              <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-cream-300/80">
-                <span>Or explore:</span>
-                <a
-                  href="#gatherings"
-                  className="underline hover:text-white transition"
-                >
-                  Upcoming Gatherings
-                </a>
-                <span>·</span>
-                <a
-                  href="#announcements"
-                  className="underline hover:text-white transition"
-                >
-                  Digital Announcements
-                </a>
-                <span>·</span>
-                <a
-                  href="#process"
-                  className="underline hover:text-white transition"
-                >
-                  How Check-In Works
-                </a>
-              </div>
             </div>
 
             {/* Bottom Exploration Bar */}
-            <div className="relative z-10 pt-6 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-cream-300 font-light gap-4">
-              <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <div className="relative z-10 pt-5 mt-3 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-cream-200/70 font-light gap-3">
+              <span className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 ring-4 ring-emerald-400/15"></span>
                 Official Google Sheets Database Active & Synchronized
               </span>
               <span>Members Church of God International · Local of Ascoville</span>
@@ -813,90 +980,53 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         </div>
       </section>
 
-      {/* Narrative Split (Section 2 - About) matching Leagally */}
-      <section id="about" className="py-24 border-b border-cream-300">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-start">
-            {/* Left 5 Cols: Narrative Copy & Image */}
-            <div className="lg:col-span-5 space-y-8">
-              <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                The Locale Story
-              </p>
-              <p className="text-charcoal-800 text-base leading-relaxed font-normal">
-                Rooted in deep Christian love, biblical sound doctrine, and tireless brotherhood, the MCGI Youth in the Local of Ascoville unites young brethren in fulfilling our divine calling to be the salt and light of the world.
-              </p>
-              <div className="img-hover-zoom rounded-2xl aspect-[4/3] bg-cream-200">
-                <img
-                  src={
-                    landingPageConfig?.aboutImageUrl ||
-                    'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=1000&q=80'
-                  }
-                  alt="MCGI Youth Fellowship"
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-
-            {/* Right 7 Cols: Big Heading + Button + Mission Statement */}
-            <div className="lg:col-span-7 flex flex-col justify-between h-full space-y-10">
-              <div className="space-y-6">
-                <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-normal leading-tight text-charcoal-950">
-                  Vibrant fellowship helping youth brethren across the Local of Ascoville walk in spiritual integrity.
-                </h2>
-                <a
-                  href="#leadership"
-                  className="inline-flex items-center gap-2 px-6 py-3 text-xs uppercase tracking-widest font-semibold rounded-full bg-charcoal-900 hover:bg-bronze-600 text-white transition"
-                >
-                  Meet Our Youth Officers
-                  <ArrowRight className="w-4 h-4" />
-                </a>
-              </div>
-
-              <div className="pt-8 border-t border-cream-300">
-                <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
-                  Our Sacred Commission
-                </p>
-                <p className="text-charcoal-800 text-sm leading-relaxed max-w-xl font-light">
-                  We maintain strict accountability and order in attendance recording, compassionate follow-up for on-and-off youth, and inspiring avenues for music, arts, and charitable missions in Ascoville.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {landingPageConfig?.showAnnouncements !== false && (
+        <AnnouncementBoard
+          announcements={announcements}
+          onSelectAnnouncement={setSelectedAnnouncement}
+          title={landingPageConfig?.announcementsTitle || 'Digital Announcement Board.'}
+          subtitle={landingPageConfig?.announcementsSubtitle || 'Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.'}
+          limit={landingPageConfig?.announcementsLimit || 4}
+          featuredAnnouncementId={landingPageConfig?.featuredAnnouncementId}
+        />
+      )}
 
       {/* Practice Areas Grid (Section 3 - Sacred Gatherings) matching Leagally */}
       <section id="gatherings" className="py-24 border-b border-cream-300">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
-            <div>
-              <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
-                Sacred Gatherings
-              </p>
+          <div className="mb-10">
               <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl text-charcoal-950 font-normal">
-                Spiritual services & assemblies.
+                Regular Weekly Gatherings
               </h2>
-            </div>
-            <p className="text-charcoal-800 text-sm max-w-md font-light leading-relaxed">
-              Join congregational services, midweek prayer meetings, and special youth gatherings scheduled at the Local of Ascoville.
-            </p>
           </div>
 
-          {/* 4-Card Practice Grid */}
           {/* Dynamic Gathering Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-stretch">
             {activeGatherings.map((g, i) => {
+              const hidePrimaryGatheringCopy = [
+                'Prayer Meeting',
+                'Worship Service',
+                'Thanksgiving of God’s People',
+              ].includes(g.title);
+              const gatheringEventType: AttendanceEvent['eventType'] | undefined =
+                g.type === 'prayer_meeting'
+                  ? 'Prayer Meeting'
+                  : g.type === 'worship_service'
+                  ? 'Worship Service'
+                  : g.type === 'tgp' || g.type === 'thanksgiving'
+                  ? 'Thanksgiving'
+                  : undefined;
               // Find matching real event from data if available
               const matchedEvent = events.find(
                 (e) =>
                   e.eventId === g.linkedEventId ||
-                  e.eventType === g.type ||
+                  e.eventType === gatheringEventType ||
                   e.eventName.toLowerCase().includes(g.title.toLowerCase())
               );
               return (
                 <div
                   key={g.id || i}
-                  className="group relative rounded-2xl overflow-hidden bg-charcoal-900 min-h-[480px] flex flex-col justify-end p-6 img-hover-zoom border border-white/5 hover:border-bronze-400/40 transition duration-300"
+                  className="group relative h-full min-h-[460px] rounded-2xl overflow-hidden bg-charcoal-900 flex flex-col justify-end p-6 img-hover-zoom border border-white/5 hover:border-bronze-400/40 transition duration-300"
                 >
                   <img
                     src={g.image || matchedEvent?.eventImage || 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=800&q=80'}
@@ -919,14 +1049,16 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                     <h3 className="font-serif text-2xl text-white font-normal leading-snug">
                       {g.title}
                     </h3>
-                    {g.subtitle && (
+                    {!hidePrimaryGatheringCopy && g.subtitle && (
                       <p className="text-[11px] uppercase tracking-wider font-semibold text-bronze-400/90">
                         {g.subtitle}
                       </p>
                     )}
-                    <p className="text-cream-200/70 text-xs font-light leading-relaxed line-clamp-3">
-                      {g.desc || matchedEvent?.description}
-                    </p>
+                    {!hidePrimaryGatheringCopy && (g.desc || matchedEvent?.description) && (
+                      <p className="text-cream-200/70 text-xs font-light leading-relaxed line-clamp-3">
+                        {g.desc || matchedEvent?.description}
+                      </p>
+                    )}
                     <button
                       onClick={() => {
                         if (matchedEvent) {
@@ -947,238 +1079,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             })}
           </div>
 
-          {/* Official Locale Schedule & Officer Duty Roster */}
-          <div className="mt-14 bg-white rounded-3xl border border-cream-300 shadow-sm overflow-hidden p-6 sm:p-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-cream-200">
-              <div>
-                <span className="text-[11px] uppercase tracking-widest font-extrabold text-bronze-600 block mb-1">
-                  Official Locale Regular Schedule & Duty Assignment
-                </span>
-                <h3 className="font-serif text-2xl text-charcoal-950 font-normal">
-                  Prayer Meeting & Worship Service Roster
-                </h3>
-                <p className="text-xs text-charcoal-600 mt-1">
-                  Officers and MPRO assignees for each batch. Click any schedule to set it for attendance check-in.
-                </p>
-              </div>
-
-              {/* Tabs */}
-              <div className="inline-flex rounded-xl bg-cream-200/60 p-1 border border-cream-300 text-xs font-semibold self-start md:self-auto">
-                <button
-                  type="button"
-                  onClick={() => setScheduleFilterTab('ALL')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    scheduleFilterTab === 'ALL'
-                      ? 'bg-charcoal-900 text-white shadow-xs'
-                      : 'text-charcoal-700 hover:text-charcoal-950'
-                  }`}
-                >
-                  All Batches
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScheduleFilterTab('PM')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    scheduleFilterTab === 'PM'
-                      ? 'bg-charcoal-900 text-white shadow-xs'
-                      : 'text-charcoal-700 hover:text-charcoal-950'
-                  }`}
-                >
-                  Prayer Meeting
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScheduleFilterTab('WS')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    scheduleFilterTab === 'WS'
-                      ? 'bg-charcoal-900 text-white shadow-xs'
-                      : 'text-charcoal-700 hover:text-charcoal-950'
-                  }`}
-                >
-                  Worship Service
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setScheduleFilterTab('TG')}
-                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
-                    scheduleFilterTab === 'TG'
-                      ? 'bg-charcoal-900 text-white shadow-xs'
-                      : 'text-charcoal-700 hover:text-charcoal-950'
-                  }`}
-                >
-                  Thanksgiving
-                </button>
-              </div>
-            </div>
-
-            {/* Schedule List / Table */}
-            <div className="mt-6 divide-y divide-cream-200">
-              {LOKAL_REGULAR_SCHEDULES.filter((slot) => {
-                if (scheduleFilterTab === 'PM') return slot.eventType === 'Prayer Meeting';
-                if (scheduleFilterTab === 'WS') return slot.eventType === 'Worship Service';
-                if (scheduleFilterTab === 'TG') return slot.eventType === 'Thanksgiving';
-                return true;
-              }).map((slot) => {
-                const isCurrentActive = selectedGatheringSlot.slotId === slot.slotId;
-                return (
-                  <div
-                    key={slot.slotId}
-                    className={`py-4 px-3 sm:px-4 rounded-xl transition flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
-                      isCurrentActive
-                        ? 'bg-amber-50/80 border border-amber-300/80 shadow-xs'
-                        : 'hover:bg-cream-100/60'
-                    }`}
-                  >
-                    <div className="flex items-start sm:items-center gap-3.5 flex-1 min-w-0">
-                      <div
-                        className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center shrink-0 text-center font-bold ${
-                          slot.eventType === 'Prayer Meeting'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                            : slot.eventType === 'Worship Service'
-                            ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                            : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                        }`}
-                      >
-                        <span className="text-[10px] uppercase font-bold">{slot.dayName}</span>
-                        <span className="text-xs font-black">{slot.time.split(' ')[0]}</span>
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-serif font-bold text-charcoal-950 text-base">
-                            {slot.eventName}
-                          </span>
-                          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-cream-200 text-charcoal-700">
-                            {slot.dayFullName} · {slot.time}
-                          </span>
-                          {slot.hasZoom && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                              <Video className="w-3 h-3 text-blue-600" />
-                              w/ Zoom
-                            </span>
-                          )}
-                          {isCurrentActive && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full animate-pulse">
-                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                              Active in Check-In
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-charcoal-700">
-                          <div>
-                            <span className="font-bold text-bronze-700">MPRO Incharge: </span>
-                            <span className="text-charcoal-900 font-medium">{slot.mproIncharge}</span>
-                          </div>
-                          <div>
-                            <span className="font-bold text-bronze-700">Officers Assigned: </span>
-                            <span className="text-charcoal-900 font-medium">{slot.officersAssigned}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 self-end lg:self-auto shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleSelectSlotFromSchedule(slot)}
-                        className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
-                          isCurrentActive
-                            ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
-                            : 'bg-charcoal-900 text-white hover:bg-bronze-600 shadow-xs'
-                        }`}
-                      >
-                        <UserCheck className="w-3.5 h-3.5" />
-                        <span>{isCurrentActive ? 'Selected (Check In)' : 'Select & Check-In'}</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Process Section (Section 4 - 3-Step Guide) matching Leagally */}
-      <section id="process" className="py-24 border-b border-cream-300">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
-            {/* Left 7 Cols: Image Banner */}
-            <div className="lg:col-span-7 rounded-3xl overflow-hidden relative bg-charcoal-950 p-8 sm:p-14 flex flex-col justify-between min-h-[440px]">
-              <img
-                src={
-                  landingPageConfig?.processImageUrl ||
-                  'https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80'
-                }
-                alt="Process Background"
-                className="absolute inset-0 w-full h-full object-cover opacity-25"
-              />
-              <div className="absolute inset-0 bg-gradient-to-br from-charcoal-950 via-charcoal-950/80 to-charcoal-900/60"></div>
-              <div className="relative z-10">
-                <span className="text-xs uppercase tracking-widest font-semibold text-bronze-400">
-                  Member Portal Protocol
-                </span>
-                <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl text-white font-normal mt-4 leading-tight">
-                  Simple, transparent, and direct — your peace of mind and youth records in three clicks.
-                </h2>
-              </div>
-              <div className="relative z-10 pt-8">
-                <button
-                  onClick={() => {
-                    setInitialSearchQuery('');
-                    setIsSearchOpen(true);
-                  }}
-                  className="inline-flex items-center gap-2 px-6 py-3 text-xs uppercase tracking-widest font-semibold rounded-full bg-cream-100 text-charcoal-900 hover:bg-bronze-500 hover:text-white transition"
-                >
-                  Search Your Name Now
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Right 5 Cols: 3 Process Cards */}
-            <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
-              {/* Step 01 */}
-              <div className="rounded-2xl bg-cream-200/50 p-6 border border-cream-300 transition-all hover:bg-cream-200/80">
-                <span className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                  Step 01
-                </span>
-                <h4 className="font-serif text-xl text-charcoal-950 font-normal mt-2">
-                  Search Your Record
-                </h4>
-                <p className="text-charcoal-800 text-xs mt-2 font-light leading-relaxed">
-                  Type your name or unique Member ID into the portal. The system instantly matches your official membership record in Google Sheets.
-                </p>
-              </div>
-
-              {/* Step 02 */}
-              <div className="rounded-2xl bg-cream-200/50 p-6 border border-cream-300 transition-all hover:bg-cream-200/80">
-                <span className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                  Step 02
-                </span>
-                <h4 className="font-serif text-xl text-charcoal-950 font-normal mt-2">
-                  Verify Standing & Status
-                </h4>
-                <p className="text-charcoal-800 text-xs mt-2 font-light leading-relaxed">
-                  Confirm your identity securely. View your committee memberships, attendance rate, registered locale, and active status in the Local of Ascoville.
-                </p>
-              </div>
-
-              {/* Step 03 */}
-              <div className="rounded-2xl bg-cream-200/50 p-6 border border-cream-300 transition-all hover:bg-cream-200/80">
-                <span className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                  Step 03
-                </span>
-                <h4 className="font-serif text-xl text-charcoal-950 font-normal mt-2">
-                  Check-In to Gatherings
-                </h4>
-                <p className="text-charcoal-800 text-xs mt-2 font-light leading-relaxed">
-                  Select your current gathering and batch schedule. One tap logs your attendance securely with timestamp and duplicate protection.
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -1186,15 +1086,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
       <section id="leadership" className="py-24 border-b border-cream-300">
         <div className="max-w-7xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
-              Youth Servant Leadership
-            </p>
             <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl text-charcoal-950 font-normal">
-              Coordinators & Committee Heads.
+              Local Youth Officers
             </h2>
-            <p className="mt-4 text-charcoal-800 text-sm font-light">
-              Elders, youth officers, and ministry coordinators committed to assisting brethren in the Local of Ascoville.
-            </p>
           </div>
 
           {/* 6-Card Team Grid */}
@@ -1231,183 +1125,122 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         </div>
       </section>
 
-      {/* Callout Banner (Section 6) matching Leagally */}
-      <section className="py-16">
+      <section id="youth-committees" className="py-20 border-b border-cream-300">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="rounded-3xl bg-charcoal-900 p-8 sm:p-14 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-8 border border-charcoal-800">
-            <div className="max-w-2xl space-y-3">
-              <p className="text-xs uppercase tracking-widest text-bronze-400 font-semibold">
-                Spiritual Reminder · 1 Timothy 4:12
-              </p>
-              <h3 className="font-serif text-2xl sm:text-3xl md:text-4xl font-normal leading-snug">
-                “Let no man despise thy youth; but be thou an example of the believers, in word, in conversation, in charity, in spirit, in faith, in purity.”
-              </h3>
-            </div>
-            <button
-              onClick={() => {
-                setInitialSearchQuery('');
-                setIsSearchOpen(true);
-              }}
-              className="shrink-0 inline-flex items-center gap-2 px-8 py-4 text-xs uppercase tracking-widest font-semibold rounded-full bg-bronze-500 hover:bg-bronze-400 text-charcoal-950 transition"
-            >
-              Check Attendance Record
-              <ArrowUpRight className="w-4 h-4" />
-            </button>
+          <div className="mb-8">
+            <h2 className="font-serif text-3xl sm:text-4xl text-charcoal-950 font-normal">
+              Youth Committees
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            {youthCommittees.map((committee) => (
+                <article
+                  key={committee.name}
+                  className="group overflow-hidden rounded-2xl bg-cream-200 border border-cream-300 transition hover:shadow-lg"
+                >
+                  <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-label={`View ${committee.name} members`}
+                    onClick={() => setSelectedCommitteeName(committee.name)}
+                    className="w-full text-left cursor-pointer"
+                  >
+                    <div className="h-40 overflow-hidden bg-charcoal-900">
+                      <img
+                        src={committee.image}
+                        alt={committee.name}
+                        onError={(event) => {
+                          event.currentTarget.src = fallbackHeroImage;
+                        }}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                    </div>
+                    <div className="p-4 bg-cream-50 space-y-1.5">
+                      <span className="text-[10px] uppercase tracking-widest text-bronze-600 font-semibold">
+                        {committee.alias}
+                      </span>
+                      <h3 className="font-serif text-lg text-charcoal-950 font-normal leading-snug">
+                        {committee.name}
+                      </h3>
+                      <p className="text-charcoal-800 text-xs font-light leading-relaxed line-clamp-3">
+                        {committee.description}
+                      </p>
+                      <span className="flex items-center justify-between pt-2 mt-2 border-t border-cream-200 text-[10px] uppercase tracking-wider font-bold text-charcoal-700">
+                        <span>{committee.members.length ? `${committee.members.length} members` : 'No members listed'}</span>
+                        <span className="inline-flex items-center gap-1 text-bronze-700">
+                          View members <ArrowRight className="w-3.5 h-3.5" />
+                        </span>
+                      </span>
+                    </div>
+                  </button>
+                </article>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* Testimonials (Section 7) matching Leagally */}
-      <section className="py-24 border-t border-b border-cream-300">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
-            <div className="lg:col-span-4 space-y-4">
-              <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600">
-                Brethren Testimonies
-              </p>
-              <h2 className="font-serif text-3xl sm:text-4xl text-charcoal-950 font-normal">
-                Voices of our youth.
-              </h2>
-              <p className="text-charcoal-800 text-sm font-light leading-relaxed">
-                Reflections and affirmations from active youth members serving in the Local of Ascoville.
-              </p>
-              <div className="flex items-center gap-3 pt-4">
-                <button
-                  onClick={prevTestimonial}
-                  aria-label="Previous testimony"
-                  className="w-11 h-11 rounded-full border border-cream-300 flex items-center justify-center text-charcoal-900 hover:bg-cream-200 transition cursor-pointer"
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={nextTestimonial}
-                  aria-label="Next testimony"
-                  className="w-11 h-11 rounded-full border border-cream-300 flex items-center justify-center text-charcoal-900 hover:bg-cream-200 transition cursor-pointer"
-                >
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-                <span className="text-xs text-charcoal-800/60 font-mono ml-2">
-                  0{testimonialIndex + 1} / 0{testimonies.length}
+      {selectedYouthCommittee && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="committee-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/65 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setSelectedCommitteeName(null)}
+        >
+          <div
+            className="w-full max-w-5xl max-h-[88vh] overflow-hidden rounded-2xl bg-cream-50 shadow-2xl border border-cream-300 animate-in zoom-in-95 duration-200"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-5 border-b border-cream-300 bg-white px-6 py-5 sm:px-8">
+              <div className="min-w-0">
+                <span className="text-xs font-bold uppercase tracking-widest text-bronze-700">
+                  {selectedYouthCommittee.alias}
                 </span>
-              </div>
-            </div>
-
-            <div className="lg:col-span-8 overflow-hidden">
-              <div className="bg-cream-50 p-8 sm:p-12 rounded-3xl border border-cream-300 relative">
-                <p className="font-serif text-xl sm:text-2xl text-charcoal-900 italic font-normal leading-relaxed">
-                  “{testimonies[testimonialIndex].quote}”
-                </p>
-                <div className="mt-8 flex items-center gap-4 pt-6 border-t border-cream-200">
-                  <img
-                    src={testimonies[testimonialIndex].avatar}
-                    alt={testimonies[testimonialIndex].author}
-                    className="w-12 h-12 rounded-full object-cover border border-cream-300"
-                  />
-                  <div>
-                    <h5 className="font-serif text-base font-medium text-charcoal-950">
-                      {testimonies[testimonialIndex].author}
-                    </h5>
-                    <p className="text-xs text-bronze-600 font-medium">
-                      {testimonies[testimonialIndex].role}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Insights / Blog Grid (Section 8 - Announcements & Circulars) matching Leagally */}
-      {landingPageConfig?.showAnnouncements !== false && (
-        <section id="announcements" className="py-24 border-b border-cream-300">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between mb-16 gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-widest font-semibold text-bronze-600 mb-2">
-                  {landingPageConfig?.announcementsSubtitle || 'Perspectives & Circulars'}
-                </p>
-                <h2 className="font-serif text-3xl sm:text-4xl text-charcoal-950 font-normal">
-                  {landingPageConfig?.announcementsTitle || 'Digital Announcement Board.'}
+                <h2 id="committee-dialog-title" className="mt-1 font-serif text-2xl sm:text-3xl text-charcoal-950">
+                  {selectedYouthCommittee.name}
                 </h2>
+                <p className="mt-1 text-sm text-charcoal-700">{selectedYouthCommittee.description}</p>
               </div>
               <button
-                onClick={() => {
-                  if (announcements[0]) setSelectedAnnouncement(announcements[0]);
-                }}
-                className="text-xs uppercase tracking-widest font-semibold text-bronze-600 hover:text-charcoal-950 flex items-center gap-1 transition cursor-pointer"
+                type="button"
+                aria-label="Close committee members"
+                onClick={() => setSelectedCommitteeName(null)}
+                className="shrink-0 rounded-lg p-2 text-charcoal-600 hover:bg-cream-200 hover:text-charcoal-950 transition cursor-pointer"
               >
-                <span>View Latest Bulletin</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* 4-Card Editorial Grid */}
-            {(() => {
-              const activeAnnouncements = announcements
-                .filter((a) => a.status !== 'Archived')
-                .sort((a, b) => {
-                  if (a.announcementId === landingPageConfig?.featuredAnnouncementId) return -1;
-                  if (b.announcementId === landingPageConfig?.featuredAnnouncementId) return 1;
-                  if (a.featured && !b.featured) return -1;
-                  if (!a.featured && b.featured) return 1;
-                  return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
-                })
-                .slice(0, landingPageConfig?.announcementsLimit || 4);
-
-              if (activeAnnouncements.length === 0) {
-                return (
-                  <div className="text-center py-16 bg-cream-50 rounded-2xl border border-cream-200 p-8">
-                    <p className="font-serif text-lg text-charcoal-800">No active circulars at this moment.</p>
-                    <p className="text-xs text-charcoal-800/60 mt-1">Please check back soon for upcoming youth bulletins.</p>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {activeAnnouncements.map((ann, idx) => (
-                    <div
-                      key={ann.announcementId || idx}
-                      onClick={() => setSelectedAnnouncement(ann)}
-                      className="group flex flex-col justify-between bg-cream-50 rounded-2xl overflow-hidden border border-cream-300 cursor-pointer transition hover:shadow-lg h-[440px]"
-                    >
-                      <div className="h-48 overflow-hidden img-hover-zoom bg-cream-200">
-                        <img
-                          src={
-                            ann.image ||
-                            'https://images.unsplash.com/photo-1517457373958-b7bdd4587205?auto=format&fit=crop&w=800&q=80'
-                          }
-                          alt={ann.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                        />
+            <div className="max-h-[calc(88vh-120px)] overflow-y-auto p-5 sm:p-8">
+              {selectedYouthCommittee.members.length ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {selectedYouthCommittee.members.map((member) => (
+                    <article key={member.name} className="flex items-center gap-4 rounded-xl border border-cream-300 bg-white p-4 shadow-sm">
+                      <img
+                        src={member.image}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-xl object-cover"
+                      />
+                      <div className="min-w-0">
+                        <h3 className="font-serif text-lg leading-snug text-charcoal-950">{member.name}</h3>
+                        {member.isContactPerson && (
+                          <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                            Contact person
+                          </span>
+                        )}
                       </div>
-                      <div className="p-6 flex flex-col justify-between flex-1 space-y-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between text-[11px] text-bronze-600 font-semibold uppercase tracking-wider">
-                            <span>{ann.location || 'Official Bulletin'}</span>
-                            <span className="text-charcoal-800/60 font-light">
-                              {ann.publishDate || 'Recent'}
-                            </span>
-                          </div>
-                          <h4 className="font-serif text-lg text-charcoal-950 font-normal leading-snug line-clamp-2">
-                            {ann.title}
-                          </h4>
-                          <p className="text-charcoal-800 text-xs font-light line-clamp-3 leading-relaxed">
-                            {ann.description}
-                          </p>
-                        </div>
-                        <span className="inline-flex items-center gap-1 text-xs uppercase tracking-wider text-bronze-600 group-hover:text-charcoal-950 font-semibold transition pt-2 border-t border-cream-200">
-                          Read Details <ArrowRight className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </div>
+                    </article>
                   ))}
                 </div>
-              );
-            })()}
+              ) : (
+                <p className="rounded-xl border border-dashed border-cream-400 bg-white px-5 py-8 text-center text-sm text-charcoal-600">
+                  No members listed yet.
+                </p>
+              )}
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
       {/* Dark Footer (Section 9) matching Leagally */}
@@ -1423,7 +1256,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 <span className="w-1.5 h-1.5 rounded-full bg-bronze-500"></span>
               </div>
               <p className="text-cream-300/70 text-xs font-light leading-relaxed max-w-sm">
-                Members Church of God International Youth Fellowship — Local of Ascoville. Nurturing faith, fellowship, and diligent Christian stewardship among our youth brethren.
+                Members Church of God International _ Local of Ascoville.
               </p>
               <div className="pt-2 text-xs text-cream-300/50 font-mono">
                 Official Database: Google Sheets (Single Source of Truth)
@@ -1437,8 +1270,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </h5>
               <ul className="space-y-2 text-xs font-light text-cream-300/80">
                 <li>
-                  <a href="#about" className="hover:text-white transition">
-                    About Locale
+                  <a href="#announcements" className="hover:text-white transition">
+                    Announcements
                   </a>
                 </li>
                 <li>
@@ -1447,44 +1280,39 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                   </a>
                 </li>
                 <li>
-                  <a href="#process" className="hover:text-white transition">
-                    Check-In Process
-                  </a>
-                </li>
-                <li>
                   <a href="#leadership" className="hover:text-white transition">
                     Youth Officers
                   </a>
                 </li>
                 <li>
-                  <a href="#announcements" className="hover:text-white transition">
-                    Announcements
+                  <a href="#youth-committees" className="hover:text-white transition">
+                    Youth Committees
                   </a>
                 </li>
               </ul>
             </div>
 
-            {/* Locale Ministries & Committees */}
+            {/* Local Youth Committees */}
             <div className="lg:col-span-3 space-y-4">
               <h5 className="text-xs uppercase tracking-widest font-semibold text-bronze-400">
-                Locale Ministries & Committees
+                Local Youth Committees
               </h5>
               <ul className="space-y-2 text-xs font-light text-cream-300/80">
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Youth Choir & Music Ministry
+                  Guest Coordinators (GCOS) · Sis. Sharmaine
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Teatro Kristiano & Creative Arts
+                  Teatro Kristiano (TK) · Bro. Dhave Tuliao
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Secretariat & Attendance Records
+                  Choir / Music Ministry
                 </li>
                 <li className="flex items-center gap-1.5">
                   <span className="w-1 h-1 rounded-full bg-bronze-500"></span>
-                  Charity, Community & Outreach Volunteers
+                  Artist Guild (AG)
                 </li>
               </ul>
             </div>
@@ -1495,15 +1323,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 Administration
               </h5>
               <p className="text-xs font-light text-cream-300/70">
-                Are you a designated youth officer, committee head, or locale administrator?
+                Authorized Local Youth Officers and committee coordinators can sign in to manage records.
               </p>
-              <button
-                onClick={() => setIsAdminLoginOpen(true)}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold uppercase tracking-wider text-charcoal-950 bg-bronze-500 rounded-full hover:bg-bronze-400 transition"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>Officer Portal Login</span>
-              </button>
             </div>
           </div>
 
@@ -1573,6 +1394,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
       {/* 3. Member Status & Attendance Modal */}
       <MemberStatusModal
+        isOpen={isStatusOpen}
         member={activeMember}
         attendanceRecords={attendance}
         upcomingEvents={events.filter((e) => e.isPublished !== false)}
@@ -1590,6 +1412,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         attendanceRecords={attendance}
         onClose={() => setSelectedEvent(null)}
         onInitiateCheckIn={handleInitiateCheckIn}
+        onSelectRegularSlot={handleSelectRegularSlotForCheckIn}
         onOpenSearch={() => {
           setSelectedEvent(null);
           setIsSearchOpen(true);

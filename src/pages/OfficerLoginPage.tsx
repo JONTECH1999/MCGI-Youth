@@ -167,24 +167,11 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
 
           {/* Quick-Fill Demo Officer Cards */}
           <div className="pt-4 border-t border-slate-800 space-y-2.5">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              <span>Quick Officer Sign-In:</span>
-              <span className="text-[10px] text-blue-400">1-Click Test</span>
+            <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              <span>Attendance Officer Profile</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickFill('aljon.admin', '1234')}
-                className="p-2.5 rounded-xl bg-slate-950/80 hover:bg-slate-800 border border-slate-800 text-left transition cursor-pointer group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white group-hover:text-blue-400">Officer Aljon</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-purple-500/20 text-purple-300">ADMIN</span>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-0.5">Head Administrator</p>
-              </button>
-
+            <div className="grid grid-cols-1 gap-2">
               <button
                 type="button"
                 onClick={() => handleQuickFill('officer.attendance', '1234')}

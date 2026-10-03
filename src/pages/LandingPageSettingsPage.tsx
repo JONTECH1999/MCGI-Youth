@@ -46,6 +46,7 @@ export const LandingPageSettingsPage: React.FC<LandingPageSettingsPageProps> = (
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('images');
   const [formData, setFormData] = useState<LandingPageConfig>({ ...landingPageConfig });
+  const [eventImageToAdd, setEventImageToAdd] = useState('');
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -262,6 +263,21 @@ export const LandingPageSettingsPage: React.FC<LandingPageSettingsPageProps> = (
     }
   };
 
+  const heroImages = formData.heroImages?.length
+    ? formData.heroImages
+    : [formData.heroImageUrl || DEFAULT_LANDING_PAGE_CONFIG.heroImageUrl];
+
+  const updateHeroImages = (images: string[]) => {
+    setFormData({ ...formData, heroImages: images, heroImageUrl: images[0] || DEFAULT_LANDING_PAGE_CONFIG.heroImageUrl });
+  };
+
+  const addEventHeroImage = () => {
+    const event = events.find((item) => item.eventId === eventImageToAdd);
+    if (!event?.eventImage || heroImages.length >= 5) return;
+    updateHeroImages([...heroImages, event.eventImage]);
+    setEventImageToAdd('');
+  };
+
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Page Header */}
@@ -370,31 +386,79 @@ export const LandingPageSettingsPage: React.FC<LandingPageSettingsPageProps> = (
       {/* TAB 1: LANDING PAGE IMAGES */}
       {activeTab === 'images' && (
         <div className="space-y-6">
-          {/* Hero Banner Image */}
+          {/* Hero Banner Images */}
           <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-amber-600" />
                 <div>
-                  <h3 className="text-sm font-bold text-slate-900">Hero Section Background Banner</h3>
+                  <h3 className="text-sm font-bold text-slate-900">Rotating Hero Background Images</h3>
                   <p className="text-xs text-slate-500">
-                    The large atmosphere banner displayed behind the main greeting on the public landing page.
+                    Add up to five photos. The homepage fades between them automatically, including photos from past events.
                   </p>
                 </div>
               </div>
             </div>
 
-            <ImageInputControl
-              label="Hero Background Image"
-              sublabel="Upload a high-resolution photo from your device or paste an image URL."
-              value={formData.heroImageUrl || DEFAULT_LANDING_PAGE_CONFIG.heroImageUrl}
-              defaultValue={DEFAULT_LANDING_PAGE_CONFIG.heroImageUrl}
-              onChange={(val) => setFormData({ ...formData, heroImageUrl: val })}
-              aspectRatioClass="aspect-video"
-              presets={heroPresets}
-              maxWidth={1920}
-              maxHeight={1080}
-            />
+            <div className="space-y-4">
+              {heroImages.map((image, index) => (
+                <div key={`${index}-${image.slice(0, 32)}`}>
+                  <ImageInputControl
+                    label={`Hero Slide ${index + 1}`}
+                    sublabel="Upload an event photo or paste a publicly accessible image link."
+                    value={image}
+                    defaultValue={index === 0 ? DEFAULT_LANDING_PAGE_CONFIG.heroImageUrl : undefined}
+                    onChange={(value) => {
+                      const nextImages = [...heroImages];
+                      nextImages[index] = value;
+                      updateHeroImages(nextImages);
+                    }}
+                    aspectRatioClass="aspect-video"
+                    presets={index === 0 ? heroPresets : undefined}
+                    maxWidth={1920}
+                    maxHeight={1080}
+                  />
+                  {heroImages.length > 1 && (
+                    <div className="flex justify-end mt-2">
+                      <button
+                        type="button"
+                        onClick={() => updateHeroImages(heroImages.filter((_, imageIndex) => imageIndex !== index))}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-rose-700 hover:bg-rose-50 text-xs font-semibold transition cursor-pointer"
+                        title={`Remove hero slide ${index + 1}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Remove slide
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <select
+                value={eventImageToAdd}
+                onChange={(event) => setEventImageToAdd(event.target.value)}
+                disabled={heroImages.length >= 5}
+                className="flex-1 px-3 py-2 rounded-xl bg-white border border-slate-300 text-xs"
+              >
+                <option value="">Add a photo from an event...</option>
+                {events.filter((event) => event.eventImage).map((event) => (
+                  <option key={event.eventId} value={event.eventId}>
+                    {event.eventName} ({event.startDate})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={addEventHeroImage}
+                disabled={!eventImageToAdd || heroImages.length >= 5}
+                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-charcoal-900 hover:bg-bronze-600 disabled:opacity-50 text-white text-xs font-semibold transition cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                Add Event Photo
+              </button>
+            </div>
           </div>
 
           {/* Section 2: Narrative "The Locale Story" Image */}

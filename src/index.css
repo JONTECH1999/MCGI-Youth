@@ -291,6 +291,42 @@
   transition: transform 0.1s linear;
 }
 
+@keyframes search-bar-pulse {
+  0%, 100% {
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0), inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    border-color: rgba(248, 113, 113, 0.95);
+    box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.35), 0 0 24px rgba(239, 68, 68, 0.45), inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  }
+}
+
+@keyframes search-dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.78); }
+}
+
+.search-attention-input {
+  animation: search-bar-pulse 1.25s ease-in-out infinite;
+}
+
+.search-notification-dot {
+  animation: search-dot-pulse 0.9s ease-in-out infinite;
+}
+
+.search-attention:focus-within .search-attention-input,
+.search-attention:focus-within .search-notification-dot {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-attention-input,
+  .search-notification-dot {
+    animation: none;
+  }
+}
+
 /* Scroll-Driven Animations via Modern CSS */
 @media (prefers-reduced-motion: no-preference) {
   @supports ((animation-timeline: view()) and (animation-range: entry)) {

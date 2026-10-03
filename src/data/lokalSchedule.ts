@@ -162,7 +162,7 @@ export const LOKAL_REGULAR_SCHEDULES: RegularGatheringSlot[] = [
     time24: '05:00',
     mproIncharge: 'S. Joy (set up), B. Orven / B. MJ / S. Eunice (inc. GA, Caravan)',
     officersAssigned: 'B. Edd Sumawang / B. Virgelio / B. Chito',
-    hasZoom: true,
+    hasZoom: false,
   },
   {
     slotId: 'TG-MON-0830',
@@ -178,6 +178,15 @@ export const LOKAL_REGULAR_SCHEDULES: RegularGatheringSlot[] = [
     hasZoom: false,
   },
 ];
+
+export function compareRegularGatheringSlots(
+  first: RegularGatheringSlot,
+  second: RegularGatheringSlot
+): number {
+  const firstWeekday = (first.dayOfWeek + 6) % 7;
+  const secondWeekday = (second.dayOfWeek + 6) % 7;
+  return firstWeekday - secondWeekday || first.time24.localeCompare(second.time24);
+}
 
 /**
  * Format local Date to YYYY-MM-DD
@@ -201,7 +210,9 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
   // 1. Check if today has gathering slots
-  const todaySlots = LOKAL_REGULAR_SCHEDULES.filter((s) => s.dayOfWeek === currentDay);
+  const todaySlots = LOKAL_REGULAR_SCHEDULES
+    .filter((s) => s.dayOfWeek === currentDay)
+    .sort(compareRegularGatheringSlots);
 
   if (todaySlots.length > 0) {
     // Find the slot that is active or upcoming today
@@ -226,7 +237,9 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
   for (let offset = (todaySlots.length > 0 ? 1 : 0); offset <= 7; offset++) {
     const targetDate = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
     const targetDay = targetDate.getDay();
-    const candidateSlots = LOKAL_REGULAR_SCHEDULES.filter((s) => s.dayOfWeek === targetDay);
+    const candidateSlots = LOKAL_REGULAR_SCHEDULES
+      .filter((s) => s.dayOfWeek === targetDay)
+      .sort(compareRegularGatheringSlots);
 
     if (candidateSlots.length > 0) {
       // Pick the first slot of that upcoming day

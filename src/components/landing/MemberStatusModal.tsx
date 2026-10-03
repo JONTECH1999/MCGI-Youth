@@ -3,7 +3,6 @@ import {
   X,
   CheckCircle,
   AlertTriangle,
-  LogOut,
   History,
 } from 'lucide-react';
 import { Member } from '../../types/member';
@@ -11,6 +10,7 @@ import { AttendanceRecord } from '../../types/attendance';
 import { AttendanceEvent, EventSchedule } from '../../types/event';
 
 interface MemberStatusModalProps {
+  isOpen: boolean;
   member: Member | null;
   attendanceRecords: AttendanceRecord[];
   upcomingEvents: AttendanceEvent[];
@@ -21,6 +21,7 @@ interface MemberStatusModalProps {
 }
 
 export const MemberStatusModal: React.FC<MemberStatusModalProps> = ({
+  isOpen,
   member,
   attendanceRecords,
   upcomingEvents,
@@ -31,7 +32,7 @@ export const MemberStatusModal: React.FC<MemberStatusModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'events' | 'history'>('overview');
 
-  if (!member) return null;
+  if (!isOpen || !member) return null;
 
   // Member's private attendance records only
   const memberAttendance = attendanceRecords
@@ -128,13 +129,8 @@ export const MemberStatusModal: React.FC<MemberStatusModalProps> = ({
           <div className="flex items-center space-x-1">
             <button
               onClick={onLogout}
-              title="Switch / Log out of this profile"
-              className="p-2 text-stone-500 hover:text-stone-800 hover:bg-stone-200/60 rounded-xl transition cursor-pointer"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-            <button
-              onClick={onClose}
+              title="Log out and close member portal"
+              aria-label="Log out and close member portal"
               className="p-2 text-stone-400 hover:text-stone-800 hover:bg-stone-200/60 rounded-xl transition cursor-pointer"
             >
               <X className="w-5 h-5" />

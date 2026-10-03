@@ -3,6 +3,7 @@ import { X, Calendar, MapPin, Clock, CheckCircle, ArrowRight, Shield } from 'luc
 import { AttendanceEvent, EventSchedule } from '../../types/event';
 import { Member } from '../../types/member';
 import { AttendanceRecord } from '../../types/attendance';
+import { LOKAL_REGULAR_SCHEDULES, RegularGatheringSlot } from '../../data/lokalSchedule';
 
 interface EventDetailsModalProps {
   event: AttendanceEvent | null;
@@ -11,6 +12,7 @@ interface EventDetailsModalProps {
   attendanceRecords: AttendanceRecord[];
   onClose: () => void;
   onInitiateCheckIn: (event: AttendanceEvent, schedule: EventSchedule) => void;
+  onSelectRegularSlot: (slot: RegularGatheringSlot) => void;
   onOpenSearch: () => void;
 }
 
@@ -21,6 +23,7 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   attendanceRecords,
   onClose,
   onInitiateCheckIn,
+  onSelectRegularSlot,
   onOpenSearch,
 }) => {
   useEffect(() => {
@@ -33,7 +36,11 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
 
   if (!event) return null;
 
-  const eventSchedules = schedules.filter((s) => s.eventId === event.eventId && s.status === 'Active');
+  const regularSchedules = LOKAL_REGULAR_SCHEDULES.filter((slot) => slot.eventType === event.eventType);
+  const eventSchedules = regularSchedules.length > 0
+    ? []
+    : schedules.filter((s) => s.eventId === event.eventId && s.status === 'Active');
+  const availableScheduleCount = regularSchedules.length || eventSchedules.length;
   const defaultPlaceholder =
     'https://images.unsplash.com/photo-1438232992991-995b7058bbb3?auto=format&fit=crop&w=1200&q=80';
 
@@ -86,8 +93,9 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             <span className="flex items-center space-x-1.5">
               <Calendar className="w-4 h-4 text-amber-700" />
               <span>
-                {event.startDate}
-                {event.endDate && event.endDate !== event.startDate ? ` to ${event.endDate}` : ''}
+                {regularSchedules.length > 0
+                  ? 'Weekly recurring schedule'
+                  : `${event.startDate}${event.endDate && event.endDate !== event.startDate ? ` to ${event.endDate}` : ''}`}
               </span>
             </span>
             <span className="flex items-center space-x-1.5">
@@ -108,10 +116,22 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
           <div className="space-y-3 pt-2">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold uppercase tracking-wider text-stone-500">Available Schedules</h4>
-              <span className="text-xs text-stone-400">{eventSchedules.length} batch(es)</span>
+              <span className="text-xs text-stone-400">{availableScheduleCount} batch(es)</span>
             </div>
 
             <div className="space-y-3">
+              {regularSchedules.map((slot) => (
+                <RegularScheduleCard
+                  key={slot.slotId}
+                  event={event}
+                  slot={slot}
+                  activeMember={activeMember}
+                  onSelect={() => {
+                    onClose();
+                    onSelectRegularSlot(slot);
+                  }}
+                />
+              ))}
               {eventSchedules.map((sch) => {
                 const isAttended =
                   activeMember &&
@@ -193,3 +213,47 @@ export const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
     </div>
   );
 };
+
+interface RegularScheduleCardProps {
+  event: AttendanceEvent;
+  slot: RegularGatheringSlot;
+  activeMember: Member | null;
+  onSelect: () => void;
+}
+
+const RegularScheduleCard: React.FC<RegularScheduleCardProps> = ({ slot, event, activeMember, onSelect }) => (
+  <div className="p-4 rounded-2xl border bg-stone-50 hover:bg-stone-100/70 border-stone-200 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto] gap-4 sm:items-center">
+    <div className="space-y-3 min-w-0">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Clock className="w-4 h-4 text-amber-700" />
+        <span className="text-sm font-bold text-stone-900">{slot.dayFullName} · {slot.time}</span>
+        {slot.hasZoom && (
+          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
+            Zoom available
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+        <div className="rounded-lg bg-white/80 border border-stone-200 p-2.5">
+          <span className="block text-[10px] uppercase tracking-wider font-bold text-stone-500">MPRO Incharge</span>
+          <span className="block mt-1 font-semibold text-stone-800 leading-relaxed">{slot.mproIncharge}</span>
+        </div>
+        <div className="rounded-lg bg-white/80 border border-stone-200 p-2.5">
+          <span className="block text-[10px] uppercase tracking-wider font-bold text-stone-500">Officers Assigned</span>
+          <span className="block mt-1 font-semibold text-stone-800 leading-relaxed">{slot.officersAssigned}</span>
+        </div>
+      </div>
+
+      <span className="block text-[11px] text-stone-500">Location: {event.location}</span>
+    </div>
+
+    <button
+      type="button"
+      onClick={onSelect}
+      className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-800 hover:bg-amber-900 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+    >
+      {activeMember ? 'Select & Check In' : 'Identify & Attend'}
+    </button>
+  </div>
+);
