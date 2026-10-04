@@ -57,12 +57,12 @@ const migrateSnapshotImages = async (snapshot: SupabaseDataSnapshot): Promise<Su
     snapshot.landingPage
       ? Promise.all([
           migrateImageSource(snapshot.landingPage.heroImageUrl),
-          Promise.all((snapshot.landingPage.heroImages || []).map((image) => migrateImageSource(image))),
+          Promise.all((snapshot.landingPage.heroImages || []).map(async (image) => (await migrateImageSource(image)) || image)),
           migrateImageSource(snapshot.landingPage.aboutImageUrl),
           migrateImageSource(snapshot.landingPage.processImageUrl),
           Promise.all((snapshot.landingPage.gatherings || []).map(async (gathering) => ({
             ...gathering,
-            image: await migrateImageSource(gathering.image),
+            image: (await migrateImageSource(gathering.image)) || gathering.image,
           }))),
           Promise.all(Object.entries(snapshot.landingPage.gatheringImages || {}).map(async ([key, image]) => [
             key,

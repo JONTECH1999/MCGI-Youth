@@ -89,20 +89,20 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
     } finally {
       setAttendingMemberId(null);
     }
+  };
 
-    const handleSecureCheckIn = async (event: React.FormEvent) => {
-      event.preventDefault();
-      if (!onSecureCheckIn) return;
-      setIsSecureSubmitting(true);
-      setSecureResult(null);
-      try {
-        setSecureResult(await onSecureCheckIn(secureMemberId, secureBirthday));
-      } catch {
-        setSecureResult({ success: false, message: 'Check-in could not be completed. Please try again or ask an officer for help.' });
-      } finally {
-        setIsSecureSubmitting(false);
-      }
-    };
+  const handleSecureCheckIn = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!onSecureCheckIn) return;
+    setIsSecureSubmitting(true);
+    setSecureResult(null);
+    try {
+      setSecureResult(await onSecureCheckIn(secureMemberId, secureBirthday));
+    } catch {
+      setSecureResult({ success: false, message: 'Check-in could not be completed. Please try again or ask an officer for help.' });
+    } finally {
+      setIsSecureSubmitting(false);
+    }
   };
 
 

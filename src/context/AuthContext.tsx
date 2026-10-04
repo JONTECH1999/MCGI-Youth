@@ -103,11 +103,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user]);
 
   useEffect(() => {
-    if (!supabase) return;
+    const client = supabase;
+    if (!client) return;
     let active = true;
 
     const restoreSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
+      const { data, error } = await client.auth.getSession();
       if (!active) return;
 
       if (error || !data.session) {
@@ -119,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setUser(await loadStaffUser(data.session.user));
       } catch {
-        await supabase.auth.signOut();
+        await client.auth.signOut();
         setUser(null);
       } finally {
         if (active) setIsAuthReady(true);
@@ -127,7 +128,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     void restoreSession();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+    const { data: { subscription } } = client.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
         setUser(null);
         setIsAuthReady(true);
