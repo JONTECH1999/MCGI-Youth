@@ -65,24 +65,30 @@ export const MemberTable: React.FC<MemberTableProps> = ({
 
   // Filtered members
   const filteredMembers = useMemo(() => {
-    return members.filter((m) => {
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchesName = m.fullName.toLowerCase().includes(q) ||
-          m.firstName.toLowerCase().includes(q) ||
-          m.lastName.toLowerCase().includes(q);
-        const matchesId = m.memberId.toLowerCase().includes(q);
-        const matchesContact = m.contactNumber.toLowerCase().includes(q);
-        if (!matchesName && !matchesId && !matchesContact) return false;
-      }
+    return [...members]
+      .filter((m) => {
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const matchesName = m.fullName.toLowerCase().includes(q) ||
+            m.firstName.toLowerCase().includes(q) ||
+            m.lastName.toLowerCase().includes(q);
+          const matchesId = m.memberId.toLowerCase().includes(q);
+          const matchesContact = m.contactNumber.toLowerCase().includes(q);
+          if (!matchesName && !matchesId && !matchesContact) return false;
+        }
 
-      if (statusFilter !== 'All' && m.membershipStatus !== statusFilter) return false;
-      if (categoryFilter !== 'All' && m.memberCategory !== categoryFilter) return false;
-      if (activityFilter !== 'All' && m.activityStatus !== activityFilter) return false;
-      if (committeeFilter !== 'All' && !m.committees.includes(committeeFilter)) return false;
+        if (statusFilter !== 'All' && m.membershipStatus !== statusFilter) return false;
+        if (categoryFilter !== 'All' && m.memberCategory !== categoryFilter) return false;
+        if (activityFilter !== 'All' && m.activityStatus !== activityFilter) return false;
+        if (committeeFilter !== 'All' && !m.committees.includes(committeeFilter)) return false;
 
-      return true;
-    });
+        return true;
+      })
+      .sort((a, b) => {
+        const numA = Number(String(a.memberId).replace(/[^0-9]/g, '')) || 0;
+        const numB = Number(String(b.memberId).replace(/[^0-9]/g, '')) || 0;
+        return numA - numB;
+      });
   }, [members, searchQuery, statusFilter, categoryFilter, activityFilter, committeeFilter]);
 
   // Paginated slice

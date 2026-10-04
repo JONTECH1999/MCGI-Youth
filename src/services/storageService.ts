@@ -8,6 +8,17 @@ import { LandingPageConfig } from '../types/landingPage';
 import { DEFAULT_SETTINGS } from '../data/defaultSettings';
 import { SAMPLE_ANNOUNCEMENTS } from '../data/sampleAnnouncements';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
+import { INITIAL_MEMBERS } from '../data/sampleMembers';
+
+const compareMemberIds = (a: string, b: string) => {
+  const numA = Number(String(a).replace(/[^0-9]/g, '')) || 0;
+  const numB = Number(String(b).replace(/[^0-9]/g, '')) || 0;
+  return numA - numB;
+};
+
+export const sortMembersById = <T extends { memberId: string }>(members: T[]): T[] => {
+  return [...members].sort((a, b) => compareMemberIds(a.memberId, b.memberId));
+};
 
 const STORAGE_KEYS = {
   MEMBERS: 'mcgi_members',
@@ -35,28 +46,36 @@ export const StorageService = {
   // --- Members ---
   getMembers(): Member[] {
     const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (!raw) return [];
+    if (!raw) {
+      const sortedDefaults = sortMembersById(INITIAL_MEMBERS);
+      this.saveMembers(sortedDefaults);
+      return sortedDefaults;
+    }
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const normalized = parsed.map((m: any) => ({
+        const normalized = sortMembersById(parsed.map((m: any) => ({
           ...m,
           memberId: m.memberId || m.memberID || m.id || '',
-        }));
+        })));
         return normalized;
       }
-      return [];
+      const sortedDefaults = sortMembersById(INITIAL_MEMBERS);
+      this.saveMembers(sortedDefaults);
+      return sortedDefaults;
     } catch {
-      return [];
+      const sortedDefaults = sortMembersById(INITIAL_MEMBERS);
+      this.saveMembers(sortedDefaults);
+      return sortedDefaults;
     }
   },
 
   saveMembers(members: Member[]) {
     // Ensure all members have clean memberId
-    const sanitized = members.map((m: any) => ({
+    const sanitized = sortMembersById(members.map((m: any) => ({
       ...m,
       memberId: m.memberId || m.memberID || m.id || '',
-    }));
+    })));
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sanitized));
   },
 

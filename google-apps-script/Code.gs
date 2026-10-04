@@ -273,12 +273,36 @@ function handleGetAllData() {
       events: getSheetDataAsJson(SHEETS.ATTENDANCE_EVENTS).data || [],
       schedules: getSheetDataAsJson(SHEETS.EVENT_SCHEDULES).data || [],
       attendance: getSheetDataAsJson(SHEETS.ATTENDANCE_RECORDS).data || [],
-      settings: getSheetDataAsJson(SHEETS.SETTINGS).data || [],
+      announcements: getSheetDataAsJson(SHEETS.ANNOUNCEMENTS).data || [],
+      landingPage: getKeyValueSheetAsJson(SHEETS.LANDING_PAGE),
+      settings: getKeyValueSheetAsJson(SHEETS.SETTINGS),
       activityLogs: getSheetDataAsJson(SHEETS.ACTIVITY_LOG).data || [],
       statusHistory: getSheetDataAsJson(SHEETS.MEMBER_STATUS_HISTORY).data || [],
       reports: getSheetDataAsJson(SHEETS.REPORTS).data || []
     }
   };
+}
+
+function getKeyValueSheetAsJson(sheetName) {
+  var rows = getSheetDataAsJson(sheetName).data || [];
+  if (!rows.length) return null;
+
+  var result = {};
+  rows.forEach(function(row) {
+    var key = row.key || row.configKey;
+    if (!key) return;
+
+    var value = row.value;
+    if (typeof value === 'string') {
+      try {
+        value = JSON.parse(value);
+      } catch (err) {
+        // Plain text values are stored as-is.
+      }
+    }
+    result[key] = value;
+  });
+  return result;
 }
 
 /**

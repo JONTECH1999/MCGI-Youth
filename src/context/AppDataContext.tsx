@@ -13,6 +13,7 @@ import { AttendanceService } from '../services/attendanceService';
 import { SupabaseDataService, SupabaseDataSnapshot } from '../services/supabaseDataService';
 import { isSupabaseConfigured, isSupabaseRequired, supabase } from '../services/supabaseClient';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
+import { sortMembersById } from '../services/storageService';
 import { useAuth } from './AuthContext';
 
 interface AppDataContextType {
@@ -131,7 +132,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Load local data on mount
   const refreshLocalData = useCallback(() => {
     const includePrivateLocalData = !isSupabaseRequired || Boolean(user);
-    const loadedMembers = includePrivateLocalData ? StorageService.getMembers() : [];
+    const loadedMembers = includePrivateLocalData ? sortMembersById(StorageService.getMembers()) : [];
     const loadedEvents = StorageService.getEvents();
     const loadedSchedules = StorageService.getSchedules();
     const loadedAttendance = includePrivateLocalData ? StorageService.getAttendance() : [];
@@ -324,7 +325,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Initial connection check & auto-sync from Google Sheets on mount / URL change
   useEffect(() => {
-    if (GasApiService.isConfigured() && !isSupabaseRequired) {
+    if (GasApiService.isConfigured() && !isSupabaseRequired && (!isSupabaseConfigured || user)) {
       setConnectionStatus('Checking');
       GasApiService.testConnection().then((res) => {
         if (res.success) {
@@ -340,18 +341,28 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } else {
       setConnectionStatus('Disconnected');
     }
-  }, [settings.googleSheets.appsScriptUrl]);
+  }, [settings.googleSheets.appsScriptUrl, user?.id]);
 
-  // Window focus listener: auto-fetch changes when user returns to web app after editing Google Sheets
+  // Window focus listener + polling: keep the app in sync with Google Sheets when it changes externally
   useEffect(() => {
+    if (!GasApiService.isConfigured() || isSupabaseRequired || isSyncing || (isSupabaseConfigured && !user)) return;
+
     const handleFocus = () => {
-      if (GasApiService.isConfigured() && !isSupabaseRequired && !isSyncing) {
-        syncFromGoogleSheets();
-      }
+      void syncFromGoogleSheets();
     };
+
+    const interval = window.setInterval(() => {
+      if (!isSyncing) {
+        void syncFromGoogleSheets();
+      }
+    }, 15000);
+
     window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [isSyncing]);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [isSyncing, isSupabaseRequired, user?.id]);
 
   /**
    * Test Connection to GAS Web App
@@ -388,7 +399,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const { data } = res;
-      if (data.members && data.members.length > 0) {
+      if (Array.isArray(data.members)) {
         const cleanedMembers = data.members.map((m: any) => ({
           ...m,
           memberId: m.memberId || m.memberID || m.id || '',
@@ -407,7 +418,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         StorageService.saveMembers(cleanedMembers);
         setMembers(cleanedMembers);
       }
-      if (data.events && data.events.length > 0) {
+      if (Array.isArray(data.events)) {
         const cleanedEvents = data.events.map((e: any) => ({
           ...e,
           eventId: e.eventId || e.eventID || e.id || '',
@@ -415,7 +426,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         StorageService.saveEvents(cleanedEvents);
         setEvents(cleanedEvents);
       }
-      if (data.schedules && data.schedules.length > 0) {
+      if (Array.isArray(data.schedules)) {
         const cleanedSchedules = data.schedules.map((s: any) => ({
           ...s,
           scheduleId: s.scheduleId || s.scheduleID || s.id || '',
@@ -424,7 +435,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         StorageService.saveSchedules(cleanedSchedules);
         setSchedules(cleanedSchedules);
       }
-      if (data.attendance && data.attendance.length > 0) {
+      if (Array.isArray(data.attendance)) {
         const cleanedAttendance = data.attendance.map((a: any) => ({
           ...a,
           attendanceId: a.attendanceId || a.attendanceID || a.id || '',
@@ -434,6 +445,31 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }));
         StorageService.saveAttendance(cleanedAttendance);
         setAttendance(cleanedAttendance);
+      }
+      if (Array.isArray(data.announcements)) {
+        StorageService.saveAnnouncements(data.announcements);
+        setAnnouncements(data.announcements);
+      }
+      if (data.landingPage) {
+        StorageService.saveLandingPageConfig(data.landingPage);
+        setLandingPageConfig(data.landingPage);
+      }
+      if (data.settings) {
+        const updatedSettings = { ...settings, ...data.settings };
+        StorageService.saveSettings(updatedSettings);
+        setSettings(updatedSettings);
+      }
+      if (Array.isArray(data.activityLogs)) {
+        StorageService.saveLogs(data.activityLogs);
+        setLogs(data.activityLogs);
+      }
+      if (Array.isArray(data.statusHistory)) {
+        StorageService.saveStatusHistory(data.statusHistory);
+        setStatusHistory(data.statusHistory);
+      }
+      if (Array.isArray(data.reports)) {
+        StorageService.saveReports(data.reports);
+        setReports(data.reports);
       }
 
       const syncTime = new Date().toISOString();
@@ -589,8 +625,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedList = [memberToSave, ...members];
     }
 
-    StorageService.saveMembers(updatedList);
-    setMembers(updatedList);
+    const sortedList = sortMembersById(updatedList);
+    StorageService.saveMembers(sortedList);
+    setMembers(sortedList);
 
     StorageService.addLog(
       operatorName,
@@ -627,7 +664,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       updatedAt: new Date().toISOString(),
     };
 
-    const updatedList = members.map((m) => (m.memberId === memberId ? updatedMember : m));
+    const updatedList = sortMembersById(members.map((m) => (m.memberId === memberId ? updatedMember : m)));
     StorageService.saveMembers(updatedList);
     setMembers(updatedList);
 
@@ -659,7 +696,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const target = members.find((m) => m.memberId === memberId);
     if (!target) return { success: false, message: 'Member not found.' };
 
-    const updatedList = members.filter((m) => m.memberId !== memberId);
+    const updatedList = sortMembersById(members.filter((m) => m.memberId !== memberId));
     StorageService.saveMembers(updatedList);
     setMembers(updatedList);
 
@@ -704,8 +741,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
     });
 
-    StorageService.saveMembers(currentList);
-    setMembers(currentList);
+    const sortedList = sortMembersById(currentList);
+    StorageService.saveMembers(sortedList);
+    setMembers(sortedList);
 
     // Sync imported to Google Sheets in batches
     for (const mem of importedList) {
@@ -861,7 +899,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const recordAttendanceBatch = async (records: AttendanceRecord[]): Promise<{ success: boolean; message: string }> => {
     const res = await AttendanceService.saveBatch(records, members, settings.attendanceRules, operatorName);
     if (res.success) {
-      setMembers(res.updatedMembers);
+      const sortedUpdatedMembers = sortMembersById(res.updatedMembers);
+      setMembers(sortedUpdatedMembers);
       setAttendance(res.allAttendance);
       setLogs(StorageService.getLogs());
 
@@ -887,9 +926,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setSettings(newSettings);
 
     // Recalculate member activity statuses if rules were adjusted
-    const recomputedMembers = members.map((m) =>
+    const recomputedMembers = sortMembersById(members.map((m) =>
       AttendanceService.recalculateMemberAttendance(m, attendance, newSettings.attendanceRules)
-    );
+    ));
     StorageService.saveMembers(recomputedMembers);
     setMembers(recomputedMembers);
 
@@ -1066,7 +1105,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     );
 
     if (res.success) {
-      setMembers(res.updatedMembers);
+      const sortedUpdatedMembers = sortMembersById(res.updatedMembers);
+      setMembers(sortedUpdatedMembers);
       setAttendance(res.allAttendance);
       setLogs(StorageService.getLogs());
 

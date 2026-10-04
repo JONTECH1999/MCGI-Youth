@@ -1,32 +1,39 @@
-# React + TypeScript + Vite
+# ASCOVILLE Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This project is configured to use:
 
-Currently, two official plugins are available:
+- Google Sheets as the primary live data table for records and metadata
+- Supabase Storage for uploaded images and videos
+- Browser localStorage only as a temporary cache layer, not as the source of truth
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Data architecture
 
-## React Compiler
+Use Google Sheets for data such as members, events, schedules, attendance, announcements, and landing-page records. Store only the public URL for uploaded media in the sheet row, while actual image/video files live in Supabase Storage.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Required environment variables
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```env
+VITE_APPS_SCRIPT_URL=...
+VITE_SPREADSHEET_ID=...
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_PUBLISHABLE_KEY=...
+VITE_SUPABASE_REQUIRED=false
+VITE_SUPABASE_MEDIA_BUCKET=announcement-media
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### Supabase bucket setup
+
+The Supabase migration creates the public-read `announcement-media` bucket and restricts uploads to authenticated active staff. Apply the migrations in `supabase/migrations` to your Supabase project. In the app, sign in through the Officer Portal, upload an image in an image control, and then save the page or announcement. The app stores the returned public URL in the record, which is synced to Google Sheets. The current bucket accepts images up to 5 MB; video uploads are not enabled by this policy.
+
+## Local development
+
+```bash
+npm install
+npm run dev
+```
+
+## Production build
+
+```bash
+npm run build
+```

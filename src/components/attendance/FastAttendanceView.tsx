@@ -22,6 +22,7 @@ import { Member } from '../../types/member';
 import { StatusBadge } from '../common/Badge';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { OFFICIAL_COMMITTEES } from '../../data/sampleCommittees';
+import { sortMembersById } from '../../services/storageService';
 
 export const FastAttendanceView: React.FC = () => {
   const {
@@ -134,36 +135,38 @@ export const FastAttendanceView: React.FC = () => {
 
   // Filter members
   const filteredMembers = useMemo(() => {
-    return members.filter((m) => {
-      const id = getMemberId(m);
-      // Search
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase().trim();
-        const matchesName = (m.fullName || '').toLowerCase().includes(q) ||
-          (m.firstName || '').toLowerCase().includes(q) ||
-          (m.lastName || '').toLowerCase().includes(q);
-        const matchesId = id.toLowerCase().includes(q);
-        const matchesContact = (m.contactNumber || '').toLowerCase().includes(q);
-        if (!matchesName && !matchesId && !matchesContact) return false;
-      }
+    return sortMembersById(
+      members.filter((m) => {
+        const id = getMemberId(m);
+        // Search
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase().trim();
+          const matchesName = (m.fullName || '').toLowerCase().includes(q) ||
+            (m.firstName || '').toLowerCase().includes(q) ||
+            (m.lastName || '').toLowerCase().includes(q);
+          const matchesId = id.toLowerCase().includes(q);
+          const matchesContact = (m.contactNumber || '').toLowerCase().includes(q);
+          if (!matchesName && !matchesId && !matchesContact) return false;
+        }
 
-      // Category
-      if (categoryFilter !== 'All' && m.memberCategory !== categoryFilter) {
-        return false;
-      }
+        // Category
+        if (categoryFilter !== 'All' && m.memberCategory !== categoryFilter) {
+          return false;
+        }
 
-      // Status
-      if (statusFilter !== 'All' && m.membershipStatus !== statusFilter) {
-        return false;
-      }
+        // Status
+        if (statusFilter !== 'All' && m.membershipStatus !== statusFilter) {
+          return false;
+        }
 
-      // Committee
-      if (committeeFilter !== 'All' && (!m.committees || !m.committees.includes(committeeFilter))) {
-        return false;
-      }
+        // Committee
+        if (committeeFilter !== 'All' && (!m.committees || !m.committees.includes(committeeFilter))) {
+          return false;
+        }
 
-      return true;
-    });
+        return true;
+      })
+    );
   }, [members, searchQuery, categoryFilter, statusFilter, committeeFilter]);
 
   // Summary counts for current working schedule

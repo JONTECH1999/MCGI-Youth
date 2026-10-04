@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Upload, Link as LinkIcon, RotateCcw, Image as ImageIcon, Check, Sparkles } from 'lucide-react';
 import { compressAndReadFileAsDataUrl } from '../../utils/imageUtils';
-import { isSupabaseConfigured, supabase } from '../../services/supabaseClient';
+import { uploadMediaToSupabaseStorage } from '../../utils/mediaStorage';
 
 export interface ImagePreset {
   label: string;
@@ -53,23 +53,14 @@ export const ImageInputControl: React.FC<ImageInputControlProps> = ({
     try {
       setIsProcessing(true);
       const dataUrl = await compressAndReadFileAsDataUrl(file, maxWidth, maxHeight);
-      let imageSource = dataUrl;
-      if (isSupabaseConfigured && supabase) {
-        const imageBlob = await (await fetch(dataUrl)).blob();
-        const contentType = imageBlob.type || 'image/jpeg';
-        const extension = contentType.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-        const imagePath = `${crypto.randomUUID()}.${extension}`;
-        const { error } = await supabase.storage
-          .from('announcement-media')
-          .upload(imagePath, imageBlob, { contentType, cacheControl: '31536000' });
-        if (error) throw error;
-        imageSource = supabase.storage.from('announcement-media').getPublicUrl(imagePath).data.publicUrl;
-      }
+      const compressedBlob = await (await fetch(dataUrl)).blob();
+      const compressedFile = new File([compressedBlob], file.name, { type: compressedBlob.type || file.type });
+      const imageSource = await uploadMediaToSupabaseStorage(compressedFile, 'media');
       onChange(imageSource);
       setUrlInput(imageSource);
       setImgError(false);
     } catch (err: any) {
-      alert(err.message || 'Failed to process image.');
+      alert(err.message || 'Image upload failed. Sign in as an authorized staff member and check Supabase Storage setup.');
     } finally {
       setIsProcessing(false);
     }

@@ -35,7 +35,7 @@ export const MemberActivityPage: React.FC<MemberActivityPageProps> = ({ onNaviga
   const [committeeFilter, setCommitteeFilter] = useState<string>('All');
 
   // Sorting
-  const [sortBy, setSortBy] = useState<'rate' | 'lastAttendance' | 'name' | 'status'>('rate');
+  const [sortBy, setSortBy] = useState<'memberId' | 'rate' | 'lastAttendance' | 'name' | 'status'>('memberId');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   // Profile Modal
@@ -84,7 +84,11 @@ export const MemberActivityPage: React.FC<MemberActivityPageProps> = ({ onNaviga
       })
       .sort((a, b) => {
         let diff = 0;
-        if (sortBy === 'rate') {
+        if (sortBy === 'memberId') {
+          const numA = Number(String(a.memberId).replace(/[^0-9]/g, '')) || 0;
+          const numB = Number(String(b.memberId).replace(/[^0-9]/g, '')) || 0;
+          diff = numA - numB;
+        } else if (sortBy === 'rate') {
           diff = a.attendancePercentage - b.attendancePercentage;
         } else if (sortBy === 'lastAttendance') {
           const dateA = a.lastAttendanceDate ? new Date(a.lastAttendanceDate).getTime() : 0;
@@ -113,7 +117,7 @@ export const MemberActivityPage: React.FC<MemberActivityPageProps> = ({ onNaviga
     return processedMembers.slice(start, start + pageSize);
   }, [processedMembers, currentPage, pageSize]);
 
-  const toggleSort = (field: 'rate' | 'lastAttendance' | 'name' | 'status') => {
+  const toggleSort = (field: 'memberId' | 'rate' | 'lastAttendance' | 'name' | 'status') => {
     if (sortBy === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {

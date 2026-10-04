@@ -6,7 +6,7 @@ import { SystemSettings } from '../types/settings';
 import { ReportSnapshot } from '../types/reports';
 import { Announcement } from '../types/announcement';
 import { LandingPageConfig } from '../types/landingPage';
-import { isSupabaseConfigured, supabase } from './supabaseClient';
+import { isSupabaseConfigured, isSupabaseRequired, supabase } from './supabaseClient';
 
 const getSupabaseAccessToken = async (): Promise<string | null> => {
   if (!isSupabaseConfigured || !supabase) return null;
@@ -71,7 +71,7 @@ export const GasApiService = {
     }
 
     try {
-      if (isSupabaseConfigured) {
+      if (isSupabaseRequired && isSupabaseConfigured) {
         const token = await getSupabaseAccessToken();
         if (!token) return { success: false, message: 'Sign in with an active officer account first.' };
         return await verifyAppsScriptStaffAccess(rawUrl, token);
@@ -103,12 +103,14 @@ export const GasApiService = {
     events: AttendanceEvent[];
     schedules: EventSchedule[];
     attendance: AttendanceRecord[];
-    settings: any[];
+    announcements: Announcement[];
+    landingPage: LandingPageConfig;
+    settings: any;
     activityLogs: any[];
     statusHistory: any[];
     reports: ReportSnapshot[];
   }>> {
-    if (isSupabaseConfigured) {
+    if (isSupabaseRequired && isSupabaseConfigured) {
       return { success: false, message: 'Supabase is the source of truth. Pull data from Supabase instead of Google Sheets.' };
     }
     const url = this.getApiUrl();
@@ -119,31 +121,7 @@ export const GasApiService = {
       };
     }
 
-    try {
-      const authToken = await getSupabaseAccessToken();
-      if (isSupabaseConfigured && !authToken) {
-        return { success: false, message: 'Sign in with an active officer account before reading Google Sheets.' };
-      }
-      const tokenQuery = authToken ? `&authToken=${encodeURIComponent(authToken)}` : '';
-      const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}action=getAllData${tokenQuery}`;
-      const response = await fetch(fetchUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const json = await response.json();
-      return json;
-    } catch (err: any) {
-      console.error('Failed to pull all data from Google Sheets:', err);
-      return {
-        success: false,
-        message: err.message || 'Error pulling data from Google Sheets.',
-      };
-    }
+    return this.postAction('getAllData', {});
   },
 
   async pullAllDataForInitialMigration(): Promise<GasApiResponse<{
@@ -151,7 +129,9 @@ export const GasApiService = {
     events: AttendanceEvent[];
     schedules: EventSchedule[];
     attendance: AttendanceRecord[];
-    settings: any[];
+    announcements: Announcement[];
+    landingPage: LandingPageConfig;
+    settings: any;
     activityLogs: any[];
     statusHistory: any[];
     reports: ReportSnapshot[];
