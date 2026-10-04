@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   UserCheck,
@@ -38,7 +38,11 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) => {
-  const { members, events, attendance } = useAppData();
+  const { members, events, attendance, syncFromGoogleSheets } = useAppData();
+
+  useEffect(() => {
+    void syncFromGoogleSheets();
+  }, []);
 
   // Global Date Filter
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'month' | 'quarter' | 'year'>('all');
@@ -96,7 +100,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
     .slice(0, 8);
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       {/* Global Date Filter Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
         <div>
@@ -123,7 +127,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       </div>
 
       {/* Row 1: Membership KPI Cards */}
-      <div>
+      <div className="order-2">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
             Membership Status Breakdown
@@ -207,7 +211,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       </div>
 
       {/* Row 2: Attendance Activity & Risk Cards */}
-      <div>
+      <div className="order-1">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
             Attendance & Activity Monitoring
@@ -222,12 +226,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">Present Today</span>
-            <div className="mt-1 text-2xl font-black text-emerald-600">
+          <div className="bg-emerald-50/70 p-5 rounded-xl border border-emerald-200 shadow-xs">
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider block">Present Today</span>
+            <div className="mt-1 text-3xl sm:text-4xl font-black text-emerald-700 leading-none">
               {attendanceAnalytics.presentToday}
             </div>
-            <span className="text-[10px] text-slate-400 mt-1 block">Marked present today</span>
+            <span className="text-xs text-emerald-700 mt-2 block">Marked present today</span>
           </div>
 
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
@@ -257,7 +261,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       </div>
 
       {/* Row 3: Demographics Summary Cards */}
-      <div>
+      <div className="order-3">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
             Demographic Overview
@@ -325,7 +329,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateTab }) =
       </div>
 
       {/* Row 4: Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="order-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Chart 1: Membership Distribution Donut */}
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
           <h4 className="text-sm font-bold text-slate-900 mb-1">Membership Status Distribution</h4>

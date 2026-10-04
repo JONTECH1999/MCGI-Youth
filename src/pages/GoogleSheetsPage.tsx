@@ -13,12 +13,16 @@ import {
   Zap,
   UploadCloud,
   HelpCircle,
+  LockKeyhole,
 } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { GasApiService } from '../services/gasApi';
 import { isSupabaseRequired } from '../services/supabaseClient';
 
 export const GoogleSheetsPage: React.FC = () => {
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [password, setPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const {
     settings,
     saveSettings,
@@ -34,6 +38,17 @@ export const GoogleSheetsPage: React.FC = () => {
     lastSyncTimestamp,
     isSyncing,
   } = useAppData();
+
+  const handleUnlock = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (password === 'Somethinglikeu#11') {
+      setIsUnlocked(true);
+      setPasswordError('');
+      setPassword('');
+      return;
+    }
+    setPasswordError('Incorrect password.');
+  };
 
   const [appsScriptUrlInput, setAppsScriptUrlInput] = useState(settings.googleSheets.appsScriptUrl || '');
   const [spreadsheetIdInput, setSpreadsheetIdInput] = useState(settings.googleSheets.spreadsheetId || '');
@@ -148,6 +163,40 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 3000);
   };
+
+  if (!isUnlocked) {
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-md items-center justify-center px-4">
+        <form onSubmit={handleUnlock} className="w-full space-y-5 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+            <LockKeyhole className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Google Sheets Integration</h2>
+            <p className="mt-1 text-sm text-slate-500">Enter the page password to continue.</p>
+          </div>
+          <label className="block space-y-1.5">
+            <span className="text-xs font-semibold text-slate-700">Password</span>
+            <input
+              type="password"
+              autoComplete="current-password"
+              autoFocus
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/15"
+              aria-invalid={Boolean(passwordError)}
+              aria-describedby={passwordError ? 'sheets-password-error' : undefined}
+            />
+          </label>
+          {passwordError && <p id="sheets-password-error" className="text-sm text-rose-700" role="alert">{passwordError}</p>}
+          <button type="submit" className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
+            <LockKeyhole className="h-4 w-4" />
+            Unlock
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

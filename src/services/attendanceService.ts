@@ -3,7 +3,6 @@ import { Member, ActivityStatus } from '../types/member';
 import { AttendanceRules } from '../types/settings';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { StorageService } from './storageService';
-import { GasApiService } from './gasApi';
 
 export const AttendanceService = {
   /**
@@ -60,12 +59,9 @@ export const AttendanceService = {
       records[0].scheduleId
     );
 
-    // Send to Google Sheets (or queue if offline)
-    const apiRes = await GasApiService.saveAttendanceBatch(records);
-
     return {
       success: true,
-      message: apiRes.message || `Successfully saved ${records.length} attendance record(s).`,
+      message: `Successfully saved ${records.length} attendance record(s).`,
       updatedMembers,
       allAttendance: mergedAttendance,
     };

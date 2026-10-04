@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   CheckCircle,
   XCircle,
@@ -14,15 +14,32 @@ import {
   AlertTriangle,
   RefreshCw,
   Check,
+  Plus,
 } from 'lucide-react';
 import { useAppData } from '../../context/AppDataContext';
-import { useAuth } from '../../context/AuthContext';
 import { AttendanceRecord, AttendanceStatus } from '../../types/attendance';
+import { AttendanceEvent, EventSchedule, EventType } from '../../types/event';
 import { Member } from '../../types/member';
 import { StatusBadge } from '../common/Badge';
 import { ConfirmDialog } from '../common/ConfirmDialog';
+import { Modal } from '../common/Modal';
 import { OFFICIAL_COMMITTEES } from '../../data/sampleCommittees';
 import { sortMembersById } from '../../services/storageService';
+import {
+  buildGatheringSlotFromSchedule,
+  formatDateYYYYMMDD,
+  getAutomatedGatheringSlot,
+  getScheduleDisplayTime,
+  getRegularGatheringDateForCurrentWeek,
+  LOKAL_REGULAR_SCHEDULES,
+  resolveOrCreateSlotEventSchedule,
+} from '../../data/lokalSchedule';
+import { LOCAL_OF_ASCOVILLE } from '../../utils/locationUtils';
+
+const EXCLUDED_FAST_ATTENDANCE_EVENTS = new Set([
+  'youth general assembly & sports fellowship',
+  'district youth bible study & indoctrination review',
+]);
 
 export const FastAttendanceView: React.FC = () => {
   const {
@@ -31,10 +48,11 @@ export const FastAttendanceView: React.FC = () => {
     members,
     attendance,
     recordAttendanceBatch,
+    saveEvent,
     saveSchedule,
+    isLoading,
+    isSyncing,
   } = useAppData();
-  const { user } = useAuth();
-
   // Helper to reliably get unique member ID
   const getMemberId = (m: Member): string => {
     return (m.memberId || (m as any).memberID || '').trim();
@@ -43,12 +61,24 @@ export const FastAttendanceView: React.FC = () => {
   // Selection states
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>('');
+  const [clockNow, setClockNow] = useState(() => new Date());
+  const manualSelectionSlotKeyRef = useRef('');
+  const hasUnsavedChangesRef = useRef(false);
+  const appliedSlotKeyRef = useRef('');
+  const inFlightSlotKeysRef = useRef(new Set<string>());
 
   // Local working state for attendance: MemberId -> AttendanceStatus
   const [workingStatus, setWorkingStatus] = useState<Record<string, AttendanceStatus>>({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
+  const [isSpecialScheduleOpen, setIsSpecialScheduleOpen] = useState(false);
+  const [isSavingSpecialSchedule, setIsSavingSpecialSchedule] = useState(false);
+  const [specialEventName, setSpecialEventName] = useState('');
+  const [specialEventType, setSpecialEventType] = useState<EventType>('Youth Activity');
+  const [specialEventDate, setSpecialEventDate] = useState(() => formatDateYYYYMMDD(new Date()));
+  const [specialStartTime, setSpecialStartTime] = useState('04:00 PM');
+  const [specialEndTime, setSpecialEndTime] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -60,15 +90,94 @@ export const FastAttendanceView: React.FC = () => {
   const [showClearConfirm, setShowClearConfirm] = useState<boolean>(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState<boolean>(false);
 
-  // Auto-select first active event & schedule on mount
+  const selectableEvents = useMemo(
+    () => events.filter((event) => !EXCLUDED_FAST_ATTENDANCE_EVENTS.has(event.eventName.trim().toLowerCase())),
+    [events]
+  );
+
+  const automatedGathering = useMemo(() => getAutomatedGatheringSlot(clockNow), [clockNow]);
+  const automatedSlotKey = `${automatedGathering.slot.slotId}:${automatedGathering.dateStr}`;
+  const latestAutomatedSlotKeyRef = useRef(automatedSlotKey);
+  latestAutomatedSlotKeyRef.current = automatedSlotKey;
+  hasUnsavedChangesRef.current = hasUnsavedChanges;
+
   useEffect(() => {
-    if (events.length > 0 && !selectedEventId) {
-      // Find ongoing or first event
-      const ongoing = events.find((e) => e.status === 'Ongoing') || events[0];
-      const targetId = ongoing.eventId || (ongoing as any).eventID || '';
-      setSelectedEventId(targetId);
+    const timer = window.setInterval(() => setClockNow(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  // Follow the same day-and-time gathering selection used by member check-in.
+  useEffect(() => {
+    if (isLoading || isSyncing) return;
+    const existingSelection = schedules.find(
+      (schedule) => (schedule.scheduleId || (schedule as any).scheduleID) === selectedScheduleId
+    );
+    const selectedDate = String(existingSelection?.date || '').slice(0, 10);
+    if (selectedDate && selectedDate < automatedGathering.dateStr && !hasUnsavedChanges) {
+      manualSelectionSlotKeyRef.current = '';
     }
-  }, [events, selectedEventId]);
+
+    if (inFlightSlotKeysRef.current.has(automatedSlotKey)) return;
+    if (
+      appliedSlotKeyRef.current === automatedSlotKey &&
+      selectedDate === automatedGathering.dateStr
+    ) return;
+
+    inFlightSlotKeysRef.current.add(automatedSlotKey);
+    void (async () => {
+      let currentEvents = selectableEvents;
+      let currentSchedules = schedules;
+      const resolvedSlots = [];
+      const slotsForGathering = LOKAL_REGULAR_SCHEDULES;
+
+      for (const slot of slotsForGathering) {
+        const date = getRegularGatheringDateForCurrentWeek(slot, clockNow);
+        const resolved = await resolveOrCreateSlotEventSchedule(
+          slot,
+          date,
+          currentEvents,
+          currentSchedules,
+          saveEvent,
+          saveSchedule
+        );
+        resolvedSlots.push({ slot, ...resolved });
+        currentEvents = currentEvents.some((event) => event.eventId === resolved.event.eventId)
+          ? currentEvents
+          : [...currentEvents, resolved.event];
+        currentSchedules = currentSchedules.some((schedule) => schedule.scheduleId === resolved.schedule.scheduleId)
+          ? currentSchedules
+          : [...currentSchedules, resolved.schedule];
+      }
+
+      const currentSlot = resolvedSlots.find(({ slot }) => slot.slotId === automatedGathering.slot.slotId);
+      if (currentSlot &&
+        manualSelectionSlotKeyRef.current !== automatedSlotKey &&
+        !hasUnsavedChangesRef.current &&
+        latestAutomatedSlotKeyRef.current === automatedSlotKey
+      ) {
+        const { event, schedule } = currentSlot;
+        setSelectedEventId(event.eventId || (event as any).eventID || '');
+        setSelectedScheduleId(schedule.scheduleId || (schedule as any).scheduleID || '');
+        appliedSlotKeyRef.current = automatedSlotKey;
+      }
+    })().catch((error: unknown) => {
+      console.error('Could not resolve the current gathering schedule:', error);
+    }).finally(() => {
+      inFlightSlotKeysRef.current.delete(automatedSlotKey);
+    });
+  }, [
+    isLoading,
+    isSyncing,
+    hasUnsavedChanges,
+    automatedGathering,
+    automatedSlotKey,
+    clockNow,
+    selectedScheduleId,
+    selectableEvents,
+    schedules,
+    saveEvent,
+    saveSchedule,
+  ]);
 
   // Robustly find all available schedules for selected event (case-insensitive & handles eventId/eventID)
   const availableSchedules = useMemo(() => {
@@ -85,7 +194,10 @@ export const FastAttendanceView: React.FC = () => {
       return status === 'active' || status === 'ongoing';
     });
 
-    return activeOnly.length > 0 ? activeOnly : forEvent;
+    return [...(activeOnly.length > 0 ? activeOnly : forEvent)].sort((first, second) =>
+      String(second.date || '').localeCompare(String(first.date || '')) ||
+      String(first.startTime || '').localeCompare(String(second.startTime || ''))
+    );
   }, [schedules, selectedEventId]);
 
   // When event changes or available schedules change, auto-select schedule
@@ -108,30 +220,95 @@ export const FastAttendanceView: React.FC = () => {
 
   // Load existing attendance for selected schedule into working status
   useEffect(() => {
-    if (selectedScheduleId) {
-      const scheduleRecords = attendance.filter((a) => {
-        const aSchedId = a.scheduleId || (a as any).scheduleID;
-        return aSchedId === selectedScheduleId;
-      });
-      const initial: Record<string, AttendanceStatus> = {};
-      scheduleRecords.forEach((r) => {
-        const memId = (r.memberId || (r as any).memberID || '').trim();
-        if (memId && r.attendanceStatus) {
-          initial[memId] = r.attendanceStatus;
-        }
-      });
-      setWorkingStatus(initial);
-      setHasUnsavedChanges(false);
-      setSaveSuccessMessage(null);
-    } else {
+    if (hasUnsavedChanges) return;
+
+    if (!selectedScheduleId) {
       setWorkingStatus({});
       setHasUnsavedChanges(false);
       setSaveSuccessMessage(null);
+      return;
     }
-  }, [selectedScheduleId, attendance]);
 
-  const currentEvent = events.find((e) => (e.eventId || (e as any).eventID) === selectedEventId);
+    const scheduleRecords = attendance.filter((record) => {
+      const recordScheduleId = record.scheduleId || (record as any).scheduleID;
+      return recordScheduleId === selectedScheduleId;
+    });
+    const initial: Record<string, AttendanceStatus> = {};
+    scheduleRecords.forEach((record) => {
+      const memberId = (record.memberId || (record as any).memberID || '').trim();
+      if (memberId && record.attendanceStatus) {
+        initial[memberId] = record.attendanceStatus;
+      }
+    });
+    setWorkingStatus(initial);
+    setSaveSuccessMessage(null);
+  }, [selectedScheduleId, attendance, hasUnsavedChanges]);
+
+  const currentEvent = selectableEvents.find((e) => (e.eventId || (e as any).eventID) === selectedEventId);
   const currentSchedule = schedules.find((s) => (s.scheduleId || (s as any).scheduleID) === selectedScheduleId);
+  const currentRegularSlot = currentEvent && currentSchedule
+    ? LOKAL_REGULAR_SCHEDULES.find((slot) => {
+        const scheduleDate = String(currentSchedule.date || '').slice(0, 10);
+        const scheduleDay = new Date(`${scheduleDate}T12:00:00Z`).getUTCDay();
+        const scheduleLabel = String(currentSchedule.scheduleLabel || '').toLowerCase().replace(/\s+/g, '');
+        const scheduleTime = String(currentSchedule.startTime || '').toLowerCase().replace(/\s+/g, '');
+        const slotTime = slot.time.toLowerCase().replace(/\s+/g, '');
+        return slot.eventType === currentEvent.eventType && slot.dayOfWeek === scheduleDay &&
+          (scheduleTime === slotTime || scheduleLabel.includes(slotTime));
+      }) || buildGatheringSlotFromSchedule(currentEvent, currentSchedule)
+    : undefined;
+
+  const handleCreateSpecialSchedule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const eventName = specialEventName.trim();
+    if (!eventName || !specialEventDate || !specialStartTime.trim()) return;
+
+    setIsSavingSpecialSchedule(true);
+    const now = new Date().toISOString();
+    const eventId = `EVT-SPECIAL-${Date.now()}`;
+    const scheduleId = `SCH-SPECIAL-${Date.now()}`;
+    const newEvent: AttendanceEvent = {
+      eventId,
+      eventName,
+      eventType: specialEventType,
+      startDate: specialEventDate,
+      endDate: specialEventDate,
+      location: LOCAL_OF_ASCOVILLE,
+      description: 'Special one-time gathering.',
+      status: 'Upcoming',
+      isPublished: true,
+      createdBy: 'Officer',
+      createdAt: now,
+      updatedAt: now,
+    };
+    const newSchedule: EventSchedule = {
+      scheduleId,
+      eventId,
+      date: specialEventDate,
+      startTime: specialStartTime.trim(),
+      endTime: specialEndTime.trim() || undefined,
+      scheduleLabel: `${specialStartTime.trim()} ${eventName}`,
+      location: LOCAL_OF_ASCOVILLE,
+      status: 'Active',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await saveEvent(newEvent);
+    await saveSchedule(newSchedule);
+    manualSelectionSlotKeyRef.current = automatedSlotKey;
+    appliedSlotKeyRef.current = automatedSlotKey;
+    setWorkingStatus({});
+    setHasUnsavedChanges(false);
+    setSelectedEventId(eventId);
+    setSelectedScheduleId(scheduleId);
+    setSpecialEventName('');
+    setSpecialEventType('Youth Activity');
+    setSpecialStartTime('04:00 PM');
+    setSpecialEndTime('');
+    setIsSavingSpecialSchedule(false);
+    setIsSpecialScheduleOpen(false);
+  };
 
   // Filter members
   const filteredMembers = useMemo(() => {
@@ -276,7 +453,7 @@ export const FastAttendanceView: React.FC = () => {
           eventDate: currentSchedule.date,
           schedule: currentSchedule.scheduleLabel,
           attendanceStatus: status,
-          recordedBy: user?.fullName || 'Attendance Officer',
+          recordedBy: 'Officer',
           recordedAt: now,
           updatedAt: now,
         });
@@ -285,7 +462,7 @@ export const FastAttendanceView: React.FC = () => {
 
     const result = await recordAttendanceBatch(recordsToSave);
     setIsSaving(false);
-    setHasUnsavedChanges(false);
+    setHasUnsavedChanges(!result.success);
     setSaveSuccessMessage(result.message);
 
     setTimeout(() => {
@@ -309,10 +486,13 @@ export const FastAttendanceView: React.FC = () => {
             </label>
             <select
               value={selectedEventId}
-              onChange={(e) => setSelectedEventId(e.target.value)}
+              onChange={(e) => {
+                manualSelectionSlotKeyRef.current = automatedSlotKey;
+                setSelectedEventId(e.target.value);
+              }}
               className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-semibold text-slate-900 shadow-2xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
             >
-              {events.map((ev) => {
+              {selectableEvents.map((ev) => {
                 const eId = ev.eventId || (ev as any).eventID;
                 return (
                   <option key={eId} value={eId}>
@@ -323,7 +503,7 @@ export const FastAttendanceView: React.FC = () => {
             </select>
             {currentEvent && (
               <p className="mt-1 text-[11px] text-slate-500">
-                {currentEvent.startDate} to {currentEvent.endDate} • {currentEvent.location}
+                {currentSchedule?.date || currentEvent.startDate} • {currentEvent.location}
               </p>
             )}
           </div>
@@ -336,7 +516,10 @@ export const FastAttendanceView: React.FC = () => {
             {availableSchedules.length > 0 ? (
               <select
                 value={selectedScheduleId}
-                onChange={(e) => setSelectedScheduleId(e.target.value)}
+                onChange={(e) => {
+                  manualSelectionSlotKeyRef.current = automatedSlotKey;
+                  setSelectedScheduleId(e.target.value);
+                }}
                 className="w-full rounded-lg border border-slate-300 bg-white py-2 px-3 text-sm font-semibold text-slate-900 shadow-2xs focus:border-blue-500 focus:outline-hidden focus:ring-1 focus:ring-blue-500"
               >
                 {availableSchedules.map((sc) => {
@@ -379,9 +562,18 @@ export const FastAttendanceView: React.FC = () => {
               </div>
             )}
             {currentSchedule && (
-              <p className="mt-1 text-[11px] text-slate-500">
-                Date: {currentSchedule.date} • Time: {currentSchedule.startTime} • Location: {currentSchedule.location}
-              </p>
+              <div className="mt-1 text-[11px] text-slate-500">
+                <p>
+                  Date: {currentSchedule.date} • Time: {getScheduleDisplayTime(currentSchedule.startTime, currentSchedule.scheduleLabel)} • Location: {currentSchedule.location}
+                </p>
+                {currentRegularSlot && (
+                  <div className="mt-1 space-y-0.5 text-slate-600">
+                    <p><span className="font-semibold">MPRO:</span> {currentRegularSlot.mproIncharge}</p>
+                    <p><span className="font-semibold">Officers:</span> {currentRegularSlot.officersAssigned}</p>
+                    {currentRegularSlot.hasZoom && <p className="font-semibold text-blue-700">Online broadcast available</p>}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -422,6 +614,15 @@ export const FastAttendanceView: React.FC = () => {
                 {saveSuccessMessage}
               </p>
             )}
+            <button
+              type="button"
+              onClick={() => setIsSpecialScheduleOpen(true)}
+              disabled={hasUnsavedChanges || isSavingSpecialSchedule}
+              className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Special Schedule
+            </button>
           </div>
         </div>
 
@@ -449,6 +650,95 @@ export const FastAttendanceView: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <Modal
+        isOpen={isSpecialScheduleOpen}
+        onClose={() => setIsSpecialScheduleOpen(false)}
+        title="Add Special Schedule"
+        subtitle="Create a one-time event and attendance batch."
+        maxWidth="md"
+      >
+        <form onSubmit={handleCreateSpecialSchedule} className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-semibold text-slate-700">Event Name *</label>
+            <input
+              required
+              autoFocus
+              value={specialEventName}
+              onChange={(event) => setSpecialEventName(event.target.value)}
+              placeholder="e.g. Special Thanksgiving Gathering"
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">Event Type</label>
+              <select
+                value={specialEventType}
+                onChange={(event) => setSpecialEventType(event.target.value as EventType)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="Youth Activity">Youth Activity</option>
+                <option value="Prayer Meeting">Prayer Meeting</option>
+                <option value="Thanksgiving">Thanksgiving</option>
+                <option value="Worship Service">Worship Service</option>
+                <option value="Bible Study">Bible Study</option>
+                <option value="Meeting">Meeting</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">Date *</label>
+              <input
+                required
+                type="date"
+                value={specialEventDate}
+                onChange={(event) => setSpecialEventDate(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">Start Time *</label>
+              <input
+                required
+                value={specialStartTime}
+                onChange={(event) => setSpecialStartTime(event.target.value)}
+                placeholder="04:00 PM"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-semibold text-slate-700">End Time</label>
+              <input
+                value={specialEndTime}
+                onChange={(event) => setSpecialEndTime(event.target.value)}
+                placeholder="Optional"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-500">Location: {LOCAL_OF_ASCOVILLE}</p>
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() => setIsSpecialScheduleOpen(false)}
+              disabled={isSavingSpecialSchedule}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSavingSpecialSchedule}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {isSavingSpecialSchedule ? 'Creating...' : 'Create Schedule'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Filter and Bulk Actions Bar */}
       <div className="bg-white rounded-xl shadow-xs border border-slate-200 p-4 space-y-3">

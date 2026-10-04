@@ -27,6 +27,7 @@
 // Global Sheet Tab Names
 var SHEETS = {
   MEMBERS: 'MEMBERS',
+  DELETED_MEMBERS: 'DELETED_MEMBERS',
   ATTENDANCE_EVENTS: 'ATTENDANCE_EVENTS',
   EVENT_SCHEDULES: 'EVENT_SCHEDULES',
   ATTENDANCE_RECORDS: 'ATTENDANCE_RECORDS',
@@ -147,11 +148,25 @@ function doPost(e) {
     }
 
     var payload = JSON.parse(e.postData.contents);
+    var action = payload.action;
+    var data = payload.data;
+
+    if (action === 'publicMemberCheckIn') {
+      var publicCheckIn = handlePublicMemberCheckIn(data);
+      return jsonResponse({
+        success: publicCheckIn.success,
+        message: publicCheckIn.message,
+        data: publicCheckIn
+      });
+    }
+    if (action === 'publicRecordAttendance') {
+      var publicAttendance = handlePublicRecordAttendance(data);
+      return jsonResponse(publicAttendance);
+    }
+
     if (!isAuthorizedSupabaseStaff(payload.authToken)) {
       return jsonResponse({ success: false, message: 'Unauthorized. Sign in with an active officer account.' });
     }
-    var action = payload.action;
-    var data = payload.data;
     var result;
 
     switch (action) {
@@ -174,6 +189,14 @@ function doPost(e) {
 
       case 'deleteMember':
         result = deleteMemberRecord(data);
+        break;
+
+      case 'trashMember':
+        result = moveMemberToTrash(data);
+        break;
+
+      case 'restoreMember':
+        result = restoreMemberFromTrash(data);
         break;
 
       case 'saveEvent':
@@ -238,6 +261,167 @@ function doPost(e) {
   }
 }
 
+function handlePublicMemberCheckIn(data) {
+  var result = handlePublicRecordAttendance(data, true);
+  if (result.success) {
+    result.sheetsSynced = true;
+    result.message = result.duplicate
+      ? 'Attendance is already recorded in Google Sheets.'
+      : 'Attendance recorded in Google Sheets.';
+  }
+  return result;
+}
+
+function handlePublicRecordAttendance(data, verifyBirthday) {
+  var memberId = String(data && data.memberId || '').trim();
+  var eventId = String(data && data.eventId || '').trim();
+  var scheduleId = String(data && data.scheduleId || '').trim();
+  var eventDate = String(data && data.eventDate || '').trim();
+  if (!memberId || !eventId || !scheduleId || !/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+    return { success: false, message: 'Attendance details are incomplete or invalid.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) {
+    return { success: false, message: 'Attendance is being recorded. Please try again shortly.' };
+  }
+
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var memberSheet = ss.getSheetByName(SHEETS.MEMBERS);
+    if (!memberSheet) return { success: false, message: 'MEMBERS sheet was not found.' };
+
+    var memberRows = memberSheet.getDataRange().getValues();
+    var memberName = '';
+    var memberBirthday = '';
+    for (var rowIndex = 1; rowIndex < memberRows.length; rowIndex++) {
+      if (String(memberRows[rowIndex][0]).trim().toLowerCase() === memberId.toLowerCase()) {
+        memberName = String(memberRows[rowIndex][4] || '').trim();
+        memberBirthday = normalizeAttendanceDate(memberRows[rowIndex][5]);
+        break;
+      }
+    }
+    if (!memberName) return { success: false, message: 'Member was not found in the MEMBERS sheet.' };
+    if (verifyBirthday && normalizeAttendanceDate(data.birthday) !== memberBirthday) {
+      return { success: false, message: 'We could not verify those details. Check your Member ID and full birthday.' };
+    }
+
+    var eventName = String(data.eventName || 'Gathering');
+    var eventType = String(data.eventType || inferAttendanceEventType(eventName));
+    var scheduleLabel = String(data.schedule || scheduleId);
+    var now = new Date().toISOString();
+    var eventResult = saveOrUpdateEvent({
+      eventId: eventId,
+      eventName: eventName,
+      eventType: eventType,
+      startDate: eventDate,
+      endDate: eventDate,
+      location: String(data.location || 'Local of Ascoville'),
+      description: 'Attendance gathering recorded from the member landing page.',
+      status: 'Ongoing',
+      createdBy: 'Member Portal',
+      createdAt: now
+    });
+    if (!eventResult.success) return eventResult;
+
+    var scheduleResult = saveOrUpdateSchedule({
+      scheduleId: scheduleId,
+      eventId: eventId,
+      date: eventDate,
+      startTime: String(data.startTime || scheduleLabel),
+      endTime: '',
+      scheduleLabel: scheduleLabel,
+      location: String(data.location || 'Local of Ascoville'),
+      status: 'Active',
+      createdAt: now
+    });
+    if (!scheduleResult.success) return scheduleResult;
+
+    var attendanceSheet = getOrCreateSheet(SHEETS.ATTENDANCE_RECORDS);
+    var attendanceRows = attendanceSheet.getDataRange().getValues();
+    for (var attendanceIndex = 1; attendanceIndex < attendanceRows.length; attendanceIndex++) {
+      if (
+        String(attendanceRows[attendanceIndex][2]).trim() === scheduleId &&
+        String(attendanceRows[attendanceIndex][3]).trim().toLowerCase() === memberId.toLowerCase()
+      ) {
+        var duplicateRecord = {
+          attendanceId: attendanceRows[attendanceIndex][0],
+          eventId: attendanceRows[attendanceIndex][1],
+          scheduleId: attendanceRows[attendanceIndex][2],
+          memberId: attendanceRows[attendanceIndex][3],
+          memberName: attendanceRows[attendanceIndex][4],
+          eventName: attendanceRows[attendanceIndex][5],
+          eventDate: normalizeAttendanceDate(attendanceRows[attendanceIndex][6]),
+          schedule: attendanceRows[attendanceIndex][7],
+          attendanceStatus: attendanceRows[attendanceIndex][8],
+          recordedBy: attendanceRows[attendanceIndex][9],
+          recordedAt: attendanceRows[attendanceIndex][10],
+          updatedAt: attendanceRows[attendanceIndex][11],
+          notes: attendanceRows[attendanceIndex][12]
+        };
+        return {
+          success: true,
+          duplicate: true,
+          memberName: memberName,
+          eventName: duplicateRecord.eventName,
+          eventDate: duplicateRecord.eventDate,
+          scheduleLabel: duplicateRecord.schedule,
+          attendanceRecord: duplicateRecord,
+          message: 'Attendance for this schedule is already in Google Sheets.'
+        };
+      }
+    }
+
+    var record = {
+      attendanceId: 'ATT-' + Utilities.getUuid(),
+      eventId: eventId,
+      scheduleId: scheduleId,
+      memberId: memberId,
+      memberName: memberName,
+      eventName: eventName,
+      eventDate: eventDate,
+      schedule: scheduleLabel,
+      attendanceStatus: 'Present',
+      recordedBy: verifyBirthday ? 'Member Self Check-in' : memberName + ' (Self Check-in)',
+      recordedAt: now,
+      updatedAt: now,
+      notes: verifyBirthday ? 'Recorded via secure Google Sheets check-in' : 'Recorded via Member Portal'
+    };
+    var saved = saveAttendanceBatch([record]);
+    return {
+      success: Boolean(saved && saved.success),
+      duplicate: false,
+      memberName: memberName,
+      eventName: record.eventName,
+      eventDate: eventDate,
+      scheduleLabel: record.schedule,
+      attendanceRecord: record,
+      message: saved && saved.message || 'Could not save attendance to Google Sheets.'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function inferAttendanceEventType(eventName) {
+  var normalizedName = String(eventName || '').toLowerCase();
+  if (normalizedName.indexOf('prayer') !== -1) return 'Prayer Meeting';
+  if (normalizedName.indexOf('thanksgiving') !== -1) return 'Thanksgiving';
+  if (normalizedName.indexOf('worship') !== -1) return 'Worship Service';
+  return 'Youth Activity';
+}
+
+function normalizeAttendanceDate(value) {
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  }
+  var text = String(value || '').trim();
+  var isoDate = text.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
+  var parsed = new Date(text);
+  return isNaN(parsed.getTime()) ? text : Utilities.formatDate(parsed, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
 /**
  * Response Formatter
  */
@@ -265,11 +449,16 @@ function handlePing() {
  * Get all essential dataset in one call for high performance
  */
 function handleGetAllData() {
+  purgeExpiredDeletedMembers();
+  removeTrashedMembersFromActiveSheet();
+  normalizeLocalLocations();
+
   return {
     success: true,
     timestamp: new Date().toISOString(),
     data: {
       members: getSheetDataAsJson(SHEETS.MEMBERS).data || [],
+      deletedMembers: getSheetDataAsJson(SHEETS.DELETED_MEMBERS).data || [],
       events: getSheetDataAsJson(SHEETS.ATTENDANCE_EVENTS).data || [],
       schedules: getSheetDataAsJson(SHEETS.EVENT_SCHEDULES).data || [],
       attendance: getSheetDataAsJson(SHEETS.ATTENDANCE_RECORDS).data || [],
@@ -281,6 +470,42 @@ function handleGetAllData() {
       reports: getSheetDataAsJson(SHEETS.REPORTS).data || []
     }
   };
+}
+
+function normalizeLocalLocations() {
+  var location = 'Local of Ascoville';
+  [
+    { sheetName: SHEETS.ATTENDANCE_EVENTS, column: 6 },
+    { sheetName: SHEETS.EVENT_SCHEDULES, column: 7 },
+    { sheetName: SHEETS.ANNOUNCEMENTS, column: 8 }
+  ].forEach(function(target) {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(target.sheetName);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+
+    var range = sheet.getRange(2, target.column, sheet.getLastRow() - 1, 1);
+    var values = range.getValues();
+    var changed = false;
+    values.forEach(function(row) {
+      if (row[0] !== location) {
+        row[0] = location;
+        changed = true;
+      }
+    });
+    if (changed) range.setValues(values);
+  });
+
+  var landingSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.LANDING_PAGE);
+  if (!landingSheet) return;
+  var landingRows = landingSheet.getDataRange().getValues();
+  for (var rowIndex = 1; rowIndex < landingRows.length; rowIndex++) {
+    if (String(landingRows[rowIndex][0]).trim().toLowerCase() === 'contactlocation') {
+      if (landingRows[rowIndex][1] !== location) {
+        landingSheet.getRange(rowIndex + 1, 2).setValue(location);
+      }
+      return;
+    }
+  }
+  landingSheet.appendRow(['contactLocation', location, new Date().toISOString()]);
 }
 
 function getKeyValueSheetAsJson(sheetName) {
@@ -333,7 +558,9 @@ function getSheetDataAsJson(sheetName) {
     for (var j = 0; j < headers.length; j++) {
       var val = row[j];
       if (val instanceof Date) {
-        val = Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+        var isTimeField = headers[j] === 'startTime' || headers[j] === 'endTime';
+        var dateFormat = isTimeField ? 'h:mm a' : 'yyyy-MM-dd';
+        val = Utilities.formatDate(val, Session.getScriptTimeZone(), dateFormat);
       }
       obj[headers[j]] = val;
       if (val !== '' && val !== null && val !== undefined) {
@@ -468,6 +695,107 @@ function deleteMemberRecord(data) {
   return { success: false, message: 'Member not found.' };
 }
 
+function moveMemberToTrash(data) {
+  var memberId = String(data && data.memberId || '').trim();
+  if (!memberId) return { success: false, message: 'Member ID is required.' };
+  ensureDeletedMemberPurgeTrigger();
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { success: false, message: 'Member data is busy. Please try again.' };
+
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var membersSheet = ss.getSheetByName(SHEETS.MEMBERS);
+    if (!membersSheet) return { success: false, message: 'MEMBERS sheet was not found.' };
+
+    var trashSheet = getOrCreateSheet(SHEETS.DELETED_MEMBERS);
+    var memberHeaders = membersSheet.getRange(1, 1, 1, membersSheet.getLastColumn()).getValues()[0];
+    if (trashSheet.getLastRow() === 0) {
+      trashSheet.appendRow(memberHeaders.concat(['Deleted At', 'Deleted By']));
+      formatHeaderRow(trashSheet, memberHeaders.length + 2);
+    }
+
+    var memberRows = membersSheet.getDataRange().getValues();
+    for (var rowIndex = 1; rowIndex < memberRows.length; rowIndex++) {
+      if (String(memberRows[rowIndex][0]).trim().toLowerCase() !== memberId.toLowerCase()) continue;
+
+      var now = new Date().toISOString();
+      var memberData = memberRows[rowIndex].slice(0, memberHeaders.length);
+      trashSheet.appendRow(memberData.concat([now, String(data.deletedBy || 'Officer')]));
+      membersSheet.deleteRow(rowIndex + 1);
+      return { success: true, message: 'Member moved to trash. Attendance history was preserved.' };
+    }
+
+    return { success: false, message: 'Member was not found in MEMBERS.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function restoreMemberFromTrash(data) {
+  var memberId = String(data && data.memberId || '').trim();
+  if (!memberId) return { success: false, message: 'Member ID is required.' };
+  purgeExpiredDeletedMembers();
+
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { success: false, message: 'Member data is busy. Please try again.' };
+
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var membersSheet = ss.getSheetByName(SHEETS.MEMBERS);
+    var trashSheet = ss.getSheetByName(SHEETS.DELETED_MEMBERS);
+    if (!membersSheet || !trashSheet) return { success: false, message: 'Member or trash sheet was not found.' };
+
+    var activeRows = membersSheet.getDataRange().getValues();
+    var trashRows = trashSheet.getDataRange().getValues();
+    var memberColumnCount = membersSheet.getLastColumn();
+    for (var rowIndex = 1; rowIndex < trashRows.length; rowIndex++) {
+      if (String(trashRows[rowIndex][0]).trim().toLowerCase() !== memberId.toLowerCase()) continue;
+
+      var activeRow = activeRows.find(function(row, index) {
+        return index > 0 && String(row[0]).trim().toLowerCase() === memberId.toLowerCase();
+      });
+      trashSheet.deleteRow(rowIndex + 1);
+      if (!activeRow) {
+        membersSheet.appendRow(trashRows[rowIndex].slice(0, memberColumnCount));
+      }
+
+      sortMembersSheetById(membersSheet);
+      var memberResult = getSheetDataAsJson(SHEETS.MEMBERS).data.find(function(member) {
+        return String(member.memberId || '').trim().toLowerCase() === memberId.toLowerCase();
+      });
+      return {
+        success: true,
+        data: { member: memberResult },
+        message: activeRow
+          ? 'Member was already active. Removed the duplicate from Trash and sorted MEMBERS by ID.'
+          : 'Member restored to MEMBERS and sorted by ID. Attendance history is still available.'
+      };
+    }
+
+    return { success: false, message: 'Member was not found in DELETED_MEMBERS.' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function sortMembersSheetById(sheet) {
+  var rows = sheet.getDataRange().getValues();
+  if (rows.length <= 2) return;
+
+  var headers = rows.shift();
+  rows.sort(function(left, right) {
+    var leftId = String(left[0] || '');
+    var rightId = String(right[0] || '');
+    var leftNumber = Number((leftId.match(/\d+/) || [''])[0]) || Number.MAX_SAFE_INTEGER;
+    var rightNumber = Number((rightId.match(/\d+/) || [''])[0]) || Number.MAX_SAFE_INTEGER;
+    return leftNumber - rightNumber || leftId.localeCompare(rightId);
+  });
+
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+}
+
 /**
  * Save Attendance Batch (High Performance & Duplicate Protection)
  */
@@ -528,6 +856,12 @@ function saveAttendanceBatch(records) {
     sheet.getRange(sheet.getLastRow() + 1, 1, newRows.length, newRows[0].length).setValues(newRows);
   }
 
+  var affectedMembers = {};
+  records.forEach(function(record) {
+    if (record && record.memberId) affectedMembers[String(record.memberId)] = true;
+  });
+  Object.keys(affectedMembers).forEach(updateMemberAttendanceSummary);
+
   return {
     success: true,
     message: 'Attendance saved: ' + createdCount + ' recorded, ' + updatedCount + ' updated.',
@@ -536,10 +870,87 @@ function saveAttendanceBatch(records) {
   };
 }
 
+function updateMemberAttendanceSummary(memberId) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var memberSheet = ss.getSheetByName(SHEETS.MEMBERS);
+  var attendanceSheet = ss.getSheetByName(SHEETS.ATTENDANCE_RECORDS);
+  if (!memberSheet || !attendanceSheet) return;
+
+  var memberRows = memberSheet.getDataRange().getValues();
+  var memberRowNumber = -1;
+  for (var i = 1; i < memberRows.length; i++) {
+    if (String(memberRows[i][0]).trim() === String(memberId).trim()) {
+      memberRowNumber = i + 1;
+      break;
+    }
+  }
+  if (memberRowNumber < 0) return;
+
+  var memberRecords = attendanceSheet.getDataRange().getValues().slice(1)
+    .filter(function(row) { return String(row[3]).trim() === String(memberId).trim(); })
+    .sort(function(a, b) {
+      var dateDiff = new Date(b[6]).getTime() - new Date(a[6]).getTime();
+      return dateDiff || new Date(b[10]).getTime() - new Date(a[10]).getTime();
+    });
+
+  var settings = getKeyValueSheetAsJson(SHEETS.SETTINGS) || {};
+  var rules = settings.attendanceRules || settings;
+  var excusedCountsAsMissed = rules.excusedCountsAsMissed === true || String(rules.excusedCountsAsMissed).toUpperCase() === 'TRUE';
+  var regularThreshold = Number(rules.regularThresholdPercent) || 75;
+  var activeThreshold = Number(rules.activeThresholdPercent) || 50;
+  var atRiskThreshold = Number(rules.missedEventsBeforeAtRisk) || 3;
+  var inactiveThreshold = Number(rules.missedEventsBeforeInactive) || 5;
+  var inactiveDaysThreshold = Number(rules.daysWithoutAttendanceBeforeInactive) || 30;
+
+  var attendedRecords = memberRecords.filter(function(row) {
+    return row[8] === 'Present' || row[8] === 'Late';
+  });
+  var qualifyingRecords = excusedCountsAsMissed
+    ? memberRecords
+    : memberRecords.filter(function(row) { return row[8] !== 'Excused'; });
+  var attendanceCount = attendedRecords.length;
+  var attendancePercentage = qualifyingRecords.length
+    ? Math.round(attendanceCount / qualifyingRecords.length * 1000) / 10
+    : 0;
+  var lastAttendanceDate = attendedRecords.length ? normalizeAttendanceDate(attendedRecords[0][6]) : '';
+  var recentRecords = memberRecords.slice(0, Math.max(inactiveThreshold, 5));
+  var recentMissed = recentRecords.filter(function(row) { return row[8] === 'Absent'; }).length;
+  var activityStatus = 'Active';
+  var activityReason = 'Attendance rate is ' + attendancePercentage + '%.';
+
+  if (lastAttendanceDate) {
+    var daysSince = Math.floor((Date.now() - new Date(lastAttendanceDate).getTime()) / 86400000);
+    if (daysSince >= inactiveDaysThreshold) {
+      activityStatus = 'Inactive';
+      activityReason = 'No attendance for ' + daysSince + ' days.';
+    }
+  }
+  if (activityStatus !== 'Inactive' && recentMissed >= inactiveThreshold) {
+    activityStatus = 'Inactive';
+    activityReason = 'Missed ' + recentMissed + ' recent qualifying events.';
+  } else if (activityStatus !== 'Inactive' && (recentMissed >= atRiskThreshold || attendancePercentage < activeThreshold)) {
+    activityStatus = 'At Risk';
+    activityReason = 'Recent attendance is below the active threshold.';
+  } else if (activityStatus !== 'Inactive' && attendancePercentage >= regularThreshold) {
+    activityStatus = 'Regular';
+    activityReason = 'Attendance rate meets the regular threshold.';
+  }
+
+  memberSheet.getRange(memberRowNumber, 22, 1, 5).setValues([[
+    lastAttendanceDate,
+    attendanceCount,
+    attendancePercentage,
+    activityStatus,
+    activityReason
+  ]]);
+  memberSheet.getRange(memberRowNumber, 29).setValue(new Date().toISOString());
+}
+
 /**
  * Save or Update Event
  */
 function saveOrUpdateEvent(event) {
+  event.location = 'Local of Ascoville';
   var sheet = getOrCreateSheet(SHEETS.ATTENDANCE_EVENTS);
   var data = sheet.getDataRange().getValues();
   var rowIndex = -1;
@@ -580,6 +991,7 @@ function saveOrUpdateEvent(event) {
  * Save or Update Schedule
  */
 function saveOrUpdateSchedule(sched) {
+  sched.location = 'Local of Ascoville';
   var sheet = getOrCreateSheet(SHEETS.EVENT_SCHEDULES);
   var data = sheet.getDataRange().getValues();
   var rowIndex = -1;
@@ -883,6 +1295,7 @@ function saveSettings(settings) {
  * Save or Update Announcement
  */
 function handleSaveAnnouncement(ann) {
+  ann.location = 'Local of Ascoville';
   var sheet = getOrCreateSheet(SHEETS.ANNOUNCEMENTS);
   var rows = sheet.getDataRange().getValues();
   var rowIndex = -1;
@@ -943,6 +1356,7 @@ function handleDeleteAnnouncement(data) {
  * Save Landing Page Configuration
  */
 function handleSaveLandingPageConfig(config) {
+  config.contactLocation = 'Local of Ascoville';
   var sheet = getOrCreateSheet(SHEETS.LANDING_PAGE);
   sheet.clear();
   sheet.appendRow(['Config Key', 'Value', 'Updated At']);
@@ -1139,6 +1553,8 @@ function handlePushAllData(data) {
   } else {
     saveOfficialSummary();
   }
+
+  normalizeLocalLocations();
   
   return {
     success: true,
@@ -1166,6 +1582,15 @@ function initializeSpreadsheetStructure() {
     ]);
   }
   formatHeaderRow(membersSheet, 29);
+
+  // DELETED_MEMBERS keeps removed records recoverable without disturbing attendance history.
+  var deletedMembersSheet = getOrCreateSheet(SHEETS.DELETED_MEMBERS);
+  if (deletedMembersSheet.getLastRow() === 0) {
+    var memberHeaders = membersSheet.getRange(1, 1, 1, membersSheet.getLastColumn()).getValues()[0];
+    deletedMembersSheet.appendRow(memberHeaders.concat(['Deleted At', 'Deleted By']));
+  }
+  formatHeaderRow(deletedMembersSheet, membersSheet.getLastColumn() + 2);
+  ensureDeletedMemberPurgeTrigger();
 
   // 2. ATTENDANCE_EVENTS
   var eventsSheet = getOrCreateSheet(SHEETS.ATTENDANCE_EVENTS);
@@ -1345,6 +1770,69 @@ function initializeSpreadsheetStructure() {
 
   // 15. OFFICIAL_SUMMARY (Official MCGI Youth Multi-Level Header Reporting Format)
   saveOfficialSummary();
+}
+
+function ensureDeletedMemberPurgeTrigger() {
+  var hasTrigger = ScriptApp.getProjectTriggers().some(function(trigger) {
+    return trigger.getHandlerFunction() === 'purgeExpiredDeletedMembers';
+  });
+  if (!hasTrigger) {
+    ScriptApp.newTrigger('purgeExpiredDeletedMembers').timeBased().everyDays(1).atHour(3).create();
+  }
+}
+
+function purgeExpiredDeletedMembers() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.DELETED_MEMBERS);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+
+    var rows = sheet.getDataRange().getValues();
+    var headers = rows[0].map(function(header) { return toCamelCase(String(header).trim()); });
+    var deletedAtColumn = headers.indexOf('deletedAt');
+    if (deletedAtColumn < 0) return;
+
+    var retentionMs = 30 * 24 * 60 * 60 * 1000;
+    var now = Date.now();
+    for (var rowIndex = rows.length - 1; rowIndex >= 1; rowIndex--) {
+      var deletedAt = rows[rowIndex][deletedAtColumn];
+      var deletedAtTime = deletedAt instanceof Date ? deletedAt.getTime() : new Date(deletedAt).getTime();
+      if (isFinite(deletedAtTime) && now - deletedAtTime >= retentionMs) {
+        sheet.deleteRow(rowIndex + 1);
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function removeTrashedMembersFromActiveSheet() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return;
+
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var membersSheet = ss.getSheetByName(SHEETS.MEMBERS);
+    var trashSheet = ss.getSheetByName(SHEETS.DELETED_MEMBERS);
+    if (!membersSheet || !trashSheet || trashSheet.getLastRow() <= 1) return;
+
+    var trashedRows = trashSheet.getDataRange().getValues();
+    var trashedIds = {};
+    for (var trashIndex = 1; trashIndex < trashedRows.length; trashIndex++) {
+      var trashedId = String(trashedRows[trashIndex][0] || '').trim().toLowerCase();
+      if (trashedId) trashedIds[trashedId] = true;
+    }
+
+    var activeRows = membersSheet.getDataRange().getValues();
+    for (var activeIndex = activeRows.length - 1; activeIndex >= 1; activeIndex--) {
+      var activeId = String(activeRows[activeIndex][0] || '').trim().toLowerCase();
+      if (trashedIds[activeId]) membersSheet.deleteRow(activeIndex + 1);
+    }
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /**

@@ -5,6 +5,15 @@ import { OFFICIAL_COMMITTEES, COMMITTEE_METADATA } from '../../data/sampleCommit
 import { useAppData } from '../../context/AppDataContext';
 import { CheckCircle2, ShieldAlert, Sparkles, Heart } from 'lucide-react';
 
+const getNextMemberId = (memberIds: string[]): string => {
+  const highestNumber = memberIds.reduce((highest, memberId) => {
+    const match = memberId.trim().match(/^M-(\d+)$/i);
+    return match ? Math.max(highest, Number(match[1])) : highest;
+  }, 1000);
+
+  return `M-${highestNumber + 1}`;
+};
+
 interface MemberFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -74,9 +83,8 @@ export const MemberFormModal: React.FC<MemberFormModalProps> = ({
         nbbQuarter: initialMember.nbbQuarter || '2nd Quarter',
       });
     } else {
-      const nextNum = Math.floor(1000 + Math.random() * 9000);
       setFormData({
-        memberId: `M-${nextNum}`,
+        memberId: getNextMemberId(existingMemberIds),
         firstName: '',
         middleName: '',
         lastName: '',

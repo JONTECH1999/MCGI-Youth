@@ -1,18 +1,21 @@
-import { AttendanceEvent, EventSchedule } from '../types/event';
+import { AttendanceEvent, EventSchedule, EventType } from '../types/event';
 
 export interface RegularGatheringSlot {
   slotId: string;
-  eventType: 'Prayer Meeting' | 'Worship Service' | 'Thanksgiving';
+  eventType: EventType | string;
   eventName: string;
   dayOfWeek: number; // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
-  dayName: 'Mon' | 'Wed' | 'Thurs' | 'Sat' | 'Sun';
-  dayFullName: 'Monday' | 'Wednesday' | 'Thursday' | 'Saturday' | 'Sunday';
+  dayName: 'Mon' | 'Wed' | 'Thurs' | 'Sat' | 'Sun' | string;
+  dayFullName: 'Monday' | 'Wednesday' | 'Thursday' | 'Saturday' | 'Sunday' | string;
   time: string;
   time24: string; // HH:mm
   mproIncharge: string;
   officersAssigned: string;
   hasZoom: boolean;
   notes?: string;
+  dateStr?: string;
+  sourceScheduleId?: string;
+  sourceEventId?: string;
 }
 
 export const LOKAL_REGULAR_SCHEDULES: RegularGatheringSlot[] = [
@@ -238,6 +241,106 @@ export function getUpcomingRegularGatheringDate(slot: RegularGatheringSlot, now:
   return formatUTCDate(new Date(Date.UTC(year, month - 1, day + daysUntilSlot)));
 }
 
+export function getRegularGatheringDateForCurrentWeek(
+  slot: RegularGatheringSlot,
+  now: Date = new Date()
+): string {
+  const { year, month, day, currentDay } = getPhilippineDateTime(now);
+  const daysSinceMonday = (currentDay + 6) % 7;
+  const daysFromMonday = (slot.dayOfWeek + 6) % 7;
+  return formatUTCDate(new Date(Date.UTC(year, month - 1, day - daysSinceMonday + daysFromMonday)));
+}
+
+export function getScheduleDisplayTime(startTime?: string, scheduleLabel?: string): string {
+  const value = String(startTime || '').trim();
+  if (!/^1899-12-30(?:T|$)/.test(value)) return value;
+
+  const match = String(scheduleLabel || '').match(/\b(\d{1,2}:\d{2})\s*(am|pm)\b/i);
+  return match ? `${match[1]} ${match[2].toUpperCase()}` : 'Time unavailable';
+}
+
+const normalizeTo24Hour = (timeValue: string): string => {
+  const raw = String(timeValue || '').trim();
+  if (!raw) return '00:00';
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (!match) {
+    const fallback = raw.match(/^(\d{1,2}):(\d{2})$/);
+    if (fallback) return `${fallback[1].padStart(2, '0')}:${fallback[2]}`;
+    return raw;
+  }
+
+  let hours = Number(match[1]);
+  const minutes = match[2];
+  const suffix = match[3].toLowerCase();
+  if (suffix === 'pm' && hours < 12) hours += 12;
+  if (suffix === 'am' && hours === 12) hours = 0;
+  return `${String(hours).padStart(2, '0')}:${minutes}`;
+};
+
+export function buildGatheringSlotFromSchedule(
+  event: AttendanceEvent,
+  schedule: EventSchedule
+): RegularGatheringSlot {
+  const date = String(schedule.date || event.startDate || '').slice(0, 10);
+  const dateValue = date ? new Date(`${date}T12:00:00Z`) : new Date();
+  const dayOfWeek = Number.isNaN(dateValue.getUTCDay()) ? 0 : dateValue.getUTCDay();
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayFullNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const timeValue = String(schedule.startTime || '07:00 PM').trim() || '07:00 PM';
+  const timeLabel = timeValue.toLowerCase().includes('am') || timeValue.toLowerCase().includes('pm')
+    ? timeValue
+    : `${timeValue} ${dayNames[dayOfWeek].toLowerCase() === 'sun' ? 'AM' : 'PM'}`;
+  const notes = [event.description, schedule.scheduleLabel].filter(Boolean).join(' • ');
+
+  return {
+    slotId: schedule.scheduleId || `${event.eventId}-${date}`,
+    eventType: event.eventType || 'Other',
+    eventName: event.eventName || schedule.scheduleLabel || 'Gathering',
+    dayOfWeek,
+    dayName: dayNames[dayOfWeek] as RegularGatheringSlot['dayName'],
+    dayFullName: dayFullNames[dayOfWeek] as RegularGatheringSlot['dayFullName'],
+    time: timeValue,
+    time24: normalizeTo24Hour(timeLabel),
+    mproIncharge: event.description || 'Local of Ascoville',
+    officersAssigned: 'Local officers assigned',
+    hasZoom: /live|zoom/i.test(`${schedule.scheduleLabel} ${event.description || ''}`),
+    notes,
+    dateStr: date,
+    sourceScheduleId: schedule.scheduleId,
+    sourceEventId: event.eventId,
+  };
+}
+
+export function getSavedScheduleGatheringSlots(
+  events: AttendanceEvent[],
+  schedules: EventSchedule[]
+): RegularGatheringSlot[] {
+  return schedules
+    .filter((schedule) => String(schedule.status || '').toLowerCase() !== 'cancelled')
+    .map((schedule) => {
+      const event = events.find((entry) => entry.eventId === schedule.eventId) || {
+        eventId: schedule.eventId,
+        eventName: schedule.scheduleLabel,
+        eventType: 'Other',
+        startDate: schedule.date,
+        endDate: schedule.date,
+        location: 'Local of Ascoville',
+        description: schedule.scheduleLabel,
+        status: 'Upcoming',
+        createdBy: 'Officer',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as AttendanceEvent;
+      return buildGatheringSlotFromSchedule(event, schedule);
+    })
+    .sort((first, second) => {
+      const left = first.dateStr || '9999-12-31';
+      const right = second.dateStr || '9999-12-31';
+      return left.localeCompare(right) || first.time24.localeCompare(second.time24);
+    });
+}
+
 /**
  * Determine the automated gathering slot based on current day and time
  */
@@ -270,6 +373,12 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
         };
       }
     }
+
+    return {
+      slot: todaySlots[todaySlots.length - 1],
+      isToday: true,
+      dateStr: formatUTCDate(todayDate),
+    };
   }
 
   // 2. If no slot remaining today (or today is a non-gathering day like Mon/Tue/Fri):
@@ -312,7 +421,9 @@ export async function resolveOrCreateSlotEventSchedule(
   saveSchedule: (schedule: EventSchedule) => Promise<any>
 ): Promise<{ event: AttendanceEvent; schedule: EventSchedule }> {
   // 1. Find matching event by type or name
-  let event = events.find(
+  let event = events.find((candidate) =>
+    candidate.eventName.trim().toLowerCase() === slot.eventName.toLowerCase()
+  ) || events.find(
     (e) =>
       e.eventType === slot.eventType ||
       (e.eventName && e.eventName.toLowerCase().includes(slot.eventType.toLowerCase()))
@@ -327,7 +438,7 @@ export async function resolveOrCreateSlotEventSchedule(
       eventType: slot.eventType,
       startDate: dateStr,
       endDate: dateStr,
-      location: 'Local of Ascoville Main Chapel',
+      location: 'Local of Ascoville',
       description: `Official congregational ${slot.eventType} gathering of the Local of Ascoville.`,
       status: 'Ongoing',
       isPublished: true,
@@ -335,20 +446,24 @@ export async function resolveOrCreateSlotEventSchedule(
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    await saveEvent(newEvent);
+    void saveEvent(newEvent).catch((error: unknown) => {
+      console.error('Could not persist the automated gathering event:', error);
+    });
     event = newEvent;
   }
 
   const eventId = event.eventId || (event as any).eventID;
 
   // 2. Find matching schedule for this event, date, and time
-  const targetLabel = `${slot.dayName} ${slot.time}`;
+  const normalizedSlotTime = slot.time.toLowerCase().replace(/\s+/g, '');
   let schedule = schedules.find((s) => {
-    const sEvtId = s.eventId || (s as any).eventID;
-    const sameEvent = sEvtId === eventId;
-    const sameDate = s.date === dateStr;
-    const labelMatch = s.scheduleLabel?.toLowerCase().includes(slot.time.toLowerCase());
-    return sameEvent && (sameDate || labelMatch);
+    const sEvtId = String(s.eventId || (s as any).eventID || '').trim().toLowerCase();
+    const sameEvent = sEvtId === String(eventId).trim().toLowerCase();
+    const sameDate = String(s.date || '').slice(0, 10) === dateStr;
+    const startTime = String(s.startTime || '').toLowerCase().replace(/\s+/g, '');
+    const label = String(s.scheduleLabel || '').toLowerCase().replace(/\s+/g, '');
+    const timeMatch = startTime === normalizedSlotTime || label.includes(normalizedSlotTime);
+    return sameEvent && sameDate && timeMatch;
   });
 
   if (!schedule) {
@@ -359,12 +474,14 @@ export async function resolveOrCreateSlotEventSchedule(
       date: dateStr,
       startTime: slot.time,
       scheduleLabel: `${slot.dayName} ${slot.time} (${slot.eventType})`,
-      location: 'Ascoville Chapel / Zoom Broadcast',
+      location: 'Local of Ascoville',
       status: 'Active',
       createdAt: nowIso,
       updatedAt: nowIso,
     };
-    await saveSchedule(newSchedule);
+    void saveSchedule(newSchedule).catch((error: unknown) => {
+      console.error('Could not persist the automated gathering schedule:', error);
+    });
     schedule = newSchedule;
   }
 

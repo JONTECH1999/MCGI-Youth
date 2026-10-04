@@ -48,6 +48,11 @@ export interface Member {
   updatedAt: string;
 }
 
+export interface DeletedMember extends Member {
+  deletedAt: string;
+  deletedBy: string;
+}
+
 export interface MemberStatusHistory {
   historyId: string;
   memberId: string;

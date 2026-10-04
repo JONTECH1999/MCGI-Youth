@@ -47,7 +47,8 @@ import { AnnouncementBoard } from '../components/landing/AnnouncementBoard';
 import { EventCheckInModal } from '../components/landing/EventCheckInModal';
 import { AdminLoginModal } from '../components/landing/AdminLoginModal';
 import { GatheringSelectorModal } from '../components/landing/GatheringSelectorModal';
-import { isSupabaseRequired, supabase } from '../services/supabaseClient';
+import { isSupabaseRequired } from '../services/supabaseClient';
+import { GasApiService } from '../services/gasApi';
 
 interface LandingPageProps {
   onEnterAdmin: () => void;
@@ -413,36 +414,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   const [attendErrorToast, setAttendErrorToast] = useState<string | null>(null);
 
   const handleSecureSupabaseCheckIn = async (memberId: string, birthday: string) => {
-    if (!supabase) {
-      return { success: false, message: 'Secure check-in is not configured. Please ask an officer for help.' };
-    }
-
-    const selectedSlotId = checkInEvent && checkInSchedule
-      ? `EVENT:${checkInEvent.eventId}:${checkInSchedule.scheduleId}`
-      : selectedGatheringSlot.slotId;
     const checkInDate = checkInSchedule?.date || selectedGatheringDate;
-    const { data, error } = await supabase.rpc('public_member_check_in', {
-      p_member_id: memberId.trim(),
-      p_birthday: birthday,
-      p_slot_id: selectedSlotId,
-      p_event_date: checkInDate,
+    const response = await GasApiService.publicMemberCheckIn({
+      memberId: memberId.trim(),
+      birthday,
+      eventId: checkInEvent?.eventId || selectedGatheringSlot.slotId,
+      scheduleId: checkInSchedule?.scheduleId || `${selectedGatheringSlot.slotId}:${checkInDate}`,
+      eventName: checkInEvent?.eventName || selectedGatheringSlot.eventName,
+      eventType: checkInEvent?.eventType || selectedGatheringSlot.eventType,
+      schedule: checkInSchedule?.scheduleLabel || `${selectedGatheringSlot.dayFullName} ${selectedGatheringSlot.time}`,
+      eventDate: checkInDate,
     });
 
-    if (error) {
-      return { success: false, message: 'Check-in is unavailable right now. Please ask an officer for help.' };
+    const result = response.data;
+
+    if (!response.success || !result?.success) {
+      return { success: false, message: response.message || result?.message || 'Could not verify your details.' };
     }
-
-    const result = data as {
-      success: boolean;
-      duplicate?: boolean;
-      message?: string;
-      memberName?: string;
-      eventName?: string;
-      eventDate?: string;
-      scheduleLabel?: string;
-    };
-
-    if (!result.success) return { success: false, message: result.message || 'Could not verify your details.' };
+    if (result.sheetsSynced === false) {
+      return { success: false, message: response.message || result.message || 'Attendance was recorded, but Google Sheets sync failed.' };
+    }
 
     const memberName = result.memberName || 'Member';
     const eventName = result.eventName || checkInEvent?.eventName || selectedGatheringSlot.eventName;
@@ -456,9 +447,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     return {
       success: true,
       duplicate: result.duplicate,
-      message: result.duplicate
+      message: response.message || result.message || (result.duplicate
         ? `Attendance for ${eventName} is already recorded.`
-        : `Attendance recorded for ${memberName}. Thank you!`,
+        : `Attendance recorded for ${memberName}. Thank you!`),
     };
   };
 
@@ -543,7 +534,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
   const handleSelectRegularSlotForCheckIn = (slot: RegularGatheringSlot) => {
     setSelectedGatheringSlot(slot);
-    setSelectedGatheringDate(getUpcomingRegularGatheringDate(slot));
+    setSelectedGatheringDate(slot.dateStr || getUpcomingRegularGatheringDate(slot));
     setIsManualOverride(true);
     setInitialSearchQuery(activeMember?.fullName || '');
     setIsSearchOpen(true);
@@ -897,6 +888,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               <div className="absolute inset-0 bg-gradient-to-t from-charcoal-950/45 via-transparent to-charcoal-950/5"></div>
             </div>
 
+            <div className="relative z-10 max-w-3xl pb-8">
+              <p className="mb-3 inline-flex max-w-full rounded-full border border-white/35 bg-charcoal-950/35 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider text-white backdrop-blur-sm">
+                {landingPageConfig.chapterName || 'MCGI Youth • Local of Ascoville'}
+              </p>
+              <h1 className="max-w-3xl font-serif text-3xl font-semibold leading-tight text-white sm:text-4xl md:text-5xl">
+                {landingPageConfig.heroTitle || 'Find your name and check in'}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/90 sm:text-base md:text-lg">
+                {landingPageConfig.heroSubtitle || 'See today’s gathering details, then search your name to record attendance.'}
+              </p>
+            </div>
+
             {/* Center Content */}
             {!hasDetachedGatheringCard && (
             <div
@@ -1069,10 +1072,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                               <button
                                 type="button"
                                 onClick={() => handleQuickAttend(member)}
-                                disabled={alreadyPresent || isProcessing}
+                                disabled={isProcessing}
+                                title={alreadyPresent ? 'Retry syncing this attendance record to Google Sheets' : 'Record attendance'}
                                 className={`inline-flex flex-1 max-w-max items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs ${
                                   alreadyPresent
-                                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 cursor-default'
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200 cursor-pointer'
                                     : isProcessing
                                     ? 'bg-amber-400 text-amber-950 animate-pulse cursor-wait'
                                     : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:scale-102 cursor-pointer'
@@ -1080,10 +1084,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
                                 <span>
-                                  {alreadyPresent
-                                    ? '✓ Present (Recorded)'
-                                    : isProcessing
-                                    ? 'Recording...'
+                                  {isProcessing
+                                    ? (alreadyPresent ? 'Syncing...' : 'Recording...')
+                                    : alreadyPresent
+                                    ? 'Sync to Sheet'
                                     : '✓ Attend (Mark Present)'}
                                 </span>
                               </button>
@@ -1656,9 +1660,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         onSelectSlot={(slot, isManual) => {
           setSelectedGatheringSlot(slot);
           setIsManualOverride(isManual);
-          setSelectedGatheringDate(getUpcomingRegularGatheringDate(slot));
+          setSelectedGatheringDate(slot.dateStr || getUpcomingRegularGatheringDate(slot));
         }}
         isManualOverride={isManualOverride}
+        events={events}
+        schedules={schedules}
       />
 
       {/* 2. Member Identity Verification Modal */}

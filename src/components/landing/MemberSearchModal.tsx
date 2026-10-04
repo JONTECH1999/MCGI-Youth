@@ -298,16 +298,17 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleAttendClick(e, member)}
-                        disabled={alreadyPresent || isProcessing}
+                        disabled={isProcessing}
+                        title={alreadyPresent ? 'Retry syncing this attendance record to Google Sheets' : 'Record attendance'}
                         className={`inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all duration-200 shadow-2xs ${
                           alreadyPresent
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 cursor-default'
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 cursor-pointer'
                             : isProcessing
                             ? 'bg-amber-400 text-amber-950 animate-pulse cursor-wait'
                             : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs hover:shadow-md cursor-pointer'
                         }`}
                       >
-                        <span>{alreadyPresent ? '✓ Recorded' : isProcessing ? 'Marking...' : '✓ Attend'}</span>
+                        <span>{alreadyPresent ? (isProcessing ? 'Syncing...' : 'Sync to Sheet') : isProcessing ? 'Marking...' : '✓ Attend'}</span>
                       </button>
                     )}
 

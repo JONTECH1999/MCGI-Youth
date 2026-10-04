@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   X,
   Calendar,
@@ -15,7 +15,9 @@ import {
   LOKAL_REGULAR_SCHEDULES,
   compareRegularGatheringSlots,
   getAutomatedGatheringSlot,
+  getSavedScheduleGatheringSlots,
 } from '../../data/lokalSchedule';
+import { AttendanceEvent, EventSchedule } from '../../types/event';
 
 interface GatheringSelectorModalProps {
   isOpen: boolean;
@@ -23,6 +25,8 @@ interface GatheringSelectorModalProps {
   selectedSlot: RegularGatheringSlot;
   onSelectSlot: (slot: RegularGatheringSlot, isManual: boolean) => void;
   isManualOverride: boolean;
+  events?: AttendanceEvent[];
+  schedules?: EventSchedule[];
 }
 
 export const GatheringSelectorModal: React.FC<GatheringSelectorModalProps> = ({
@@ -31,15 +35,28 @@ export const GatheringSelectorModal: React.FC<GatheringSelectorModalProps> = ({
   selectedSlot,
   onSelectSlot,
   isManualOverride,
+  events = [],
+  schedules = [],
 }) => {
   const [activeTab, setActiveTab] = useState<'All' | 'Prayer Meeting' | 'Worship Service' | 'Thanksgiving'>('All');
 
   if (!isOpen) return null;
 
-  const filteredSlots = LOKAL_REGULAR_SCHEDULES.filter((s) => {
-    if (activeTab === 'All') return true;
-    return s.eventType === activeTab;
-  }).sort(compareRegularGatheringSlots);
+  const savedScheduleSlots = useMemo(
+    () => getSavedScheduleGatheringSlots(events, schedules),
+    [events, schedules]
+  );
+
+  const filteredSlots = [...savedScheduleSlots, ...LOKAL_REGULAR_SCHEDULES]
+    .filter((slot) => {
+      if (activeTab === 'All') return true;
+      return String(slot.eventType).toLowerCase() === activeTab.toLowerCase();
+    })
+    .sort((first, second) => {
+      const firstDate = first.dateStr || '9999-12-31';
+      const secondDate = second.dateStr || '9999-12-31';
+      return firstDate.localeCompare(secondDate) || first.time24.localeCompare(second.time24);
+    });
 
   const handleResetToAuto = () => {
     const auto = getAutomatedGatheringSlot();
@@ -123,7 +140,9 @@ export const GatheringSelectorModal: React.FC<GatheringSelectorModalProps> = ({
         {/* Schedule Slots List */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 divide-y divide-stone-100 space-y-3">
           {filteredSlots.map((slot) => {
-            const isSelected = selectedSlot.slotId === slot.slotId;
+            const isSelected =
+              selectedSlot.slotId === slot.slotId ||
+              (!!selectedSlot.sourceScheduleId && selectedSlot.sourceScheduleId === slot.sourceScheduleId);
 
             return (
               <div

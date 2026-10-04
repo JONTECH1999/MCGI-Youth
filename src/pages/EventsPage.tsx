@@ -18,6 +18,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge } from '../components/common/Badge';
 import { NavItemKey } from '../components/layout/Sidebar';
+import { LOCAL_OF_ASCOVILLE } from '../utils/locationUtils';
 
 interface EventsPageProps {
   onNavigateTab: (tab: NavItemKey) => void;
@@ -51,7 +52,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
     eventType: 'Prayer Meeting',
     startDate: new Date().toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0],
-    location: 'Main Chapel',
+    location: LOCAL_OF_ASCOVILLE,
     description: '',
     status: 'Upcoming',
   });
@@ -62,7 +63,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
     startTime: '07:00 PM',
     endTime: '09:30 PM',
     scheduleLabel: '7:00 PM Service',
-    location: 'Main Chapel',
+    location: LOCAL_OF_ASCOVILLE,
     status: 'Active',
   });
 
@@ -79,7 +80,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
         eventType: 'Prayer Meeting',
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date().toISOString().split('T')[0],
-        location: 'Main Chapel',
+        location: LOCAL_OF_ASCOVILLE,
         description: '',
         eventImage: '',
         isFeatured: false,
@@ -135,7 +136,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
       eventType: eventForm.eventType as EventType,
       startDate: eventForm.startDate,
       endDate: eventForm.endDate || eventForm.startDate,
-      location: eventForm.location || '',
+      location: LOCAL_OF_ASCOVILLE,
       description: eventForm.description || '',
       status: eventForm.status as any || 'Upcoming',
       createdBy: editingEvent ? editingEvent.createdBy : 'Officer',
@@ -159,7 +160,7 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
       startTime: scheduleForm.startTime || '07:00 PM',
       endTime: scheduleForm.endTime || '',
       scheduleLabel: scheduleForm.scheduleLabel.trim(),
-      location: scheduleForm.location || targetEventForSchedule.location,
+      location: LOCAL_OF_ASCOVILLE,
       status: (scheduleForm.status as any) || 'Active',
       createdAt: editingSchedule ? editingSchedule.createdAt : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -433,9 +434,8 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
             <input
               type="text"
               value={eventForm.location}
-              onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
-              placeholder="Main Chapel / Streaming Feed"
-              className="w-full rounded-lg border border-slate-300 py-2 px-3 text-xs"
+              readOnly
+              className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 px-3 text-xs text-slate-500"
             />
           </div>
 
@@ -557,9 +557,8 @@ export const EventsPage: React.FC<EventsPageProps> = ({ onNavigateTab }) => {
             <input
               type="text"
               value={scheduleForm.location}
-              onChange={(e) => setScheduleForm({ ...scheduleForm, location: e.target.value })}
-              placeholder="Main Chapel"
-              className="w-full rounded-lg border border-slate-300 py-2 px-3 text-xs"
+              readOnly
+              className="w-full rounded-lg border border-slate-300 bg-slate-50 py-2 px-3 text-xs text-slate-500"
             />
           </div>
 

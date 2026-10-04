@@ -101,15 +101,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }`}
       >
         {/* Brand Header */}
-        <div className="flex h-16 shrink-0 items-center justify-between px-6 border-b border-cream-300 bg-white/80">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-charcoal-900 text-cream-100 font-bold text-sm tracking-wider shadow-sm">
-              MCGI
-            </div>
-            <div>
-              <h1 className="text-sm font-bold text-charcoal-950 tracking-wide leading-tight">MCGI Youth</h1>
-              <p className="text-[10px] text-bronze-700 uppercase tracking-wider font-semibold">Local of Ascoville</p>
-            </div>
+        <div className="flex h-[72px] shrink-0 items-center px-5 border-b border-cream-300 bg-white/80">
+          <div>
+            <h1 className="text-base font-bold text-charcoal-950 leading-tight">MCGI Youth</h1>
+            <p className="mt-1 text-[10px] text-bronze-700 uppercase tracking-wider font-semibold">Local of Ascoville</p>
           </div>
         </div>
 
@@ -121,9 +116,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onCloseMobile();
                 onBackToPublic();
               }}
-              className="w-full py-2 px-3 rounded-xl bg-charcoal-900 hover:bg-bronze-600 text-white font-semibold text-xs flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs active:scale-98"
+              className="w-full py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center justify-center space-x-2 transition cursor-pointer shadow-xs active:scale-98"
             >
-              <Globe className="w-3.5 h-3.5 text-bronze-300" />
+              <Globe className="w-3.5 h-3.5 text-blue-100" />
               <span>← View Member Landing Page</span>
             </button>
           </div>
@@ -143,7 +138,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-medium transition-all ${
                   isActive
-                    ? 'bg-charcoal-900 text-white shadow-sm'
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/20'
                     : 'text-charcoal-800 hover:bg-cream-200 hover:text-charcoal-950'
                 }`}
               >

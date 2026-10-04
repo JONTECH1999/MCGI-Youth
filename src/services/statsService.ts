@@ -5,6 +5,13 @@ import { DemographicStatistics, MembershipStatistics, AttendanceAnalytics } from
 import { OFFICIAL_COMMITTEES, normalizeCommitteeName } from '../data/sampleCommittees';
 
 export const StatsService = {
+  localDateKey(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  },
+
   /**
    * Helper: check if member belongs to Junior bracket (14 to 24 years old)
    * or Senior bracket (25 years old & above)
@@ -208,14 +215,15 @@ export const StatsService = {
     members: Member[],
     dateFilter: 'all' | 'today' | 'week' | 'month' | 'quarter' | 'year' = 'all'
   ): AttendanceAnalytics {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const today = new Date();
+    const todayStr = this.localDateKey(today);
 
     const filteredRecords = records.filter((r) => {
       if (dateFilter === 'all') return true;
       if (dateFilter === 'today') return r.eventDate === todayStr;
 
-      const recDate = new Date(r.eventDate);
-      const now = new Date();
+      const recDate = new Date(`${r.eventDate}T00:00:00`);
+      const now = today;
 
       if (dateFilter === 'week') {
         const diffDays = (now.getTime() - recDate.getTime()) / (1000 * 3600 * 24);

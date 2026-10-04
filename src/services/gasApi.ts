@@ -1,5 +1,5 @@
 import { StorageService } from './storageService';
-import { Member } from '../types/member';
+import { DeletedMember, Member } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { AttendanceRecord } from '../types/attendance';
 import { SystemSettings } from '../types/settings';
@@ -31,6 +31,17 @@ export interface GasApiResponse<T = any> {
   timestamp?: string;
   spreadsheetTitle?: string;
   spreadsheetId?: string;
+}
+
+export interface PublicMemberCheckInResult {
+  success: boolean;
+  duplicate?: boolean;
+  message?: string;
+  memberName?: string;
+  eventName?: string;
+  eventDate?: string;
+  scheduleLabel?: string;
+  sheetsSynced?: boolean;
 }
 
 export const GasApiService = {
@@ -100,6 +111,7 @@ export const GasApiService = {
    */
   async pullAllData(): Promise<GasApiResponse<{
     members: Member[];
+    deletedMembers: DeletedMember[];
     events: AttendanceEvent[];
     schedules: EventSchedule[];
     attendance: AttendanceRecord[];
@@ -124,8 +136,66 @@ export const GasApiService = {
     return this.postAction('getAllData', {});
   },
 
+  async publicMemberCheckIn(params: {
+    memberId: string;
+    birthday: string;
+    eventId: string;
+    scheduleId: string;
+    eventName: string;
+    eventType?: string;
+    schedule: string;
+    eventDate: string;
+  }): Promise<GasApiResponse<PublicMemberCheckInResult>> {
+    const url = this.getApiUrl();
+    if (!this.isConfigured()) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured.' };
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'publicMemberCheckIn', data: params }),
+      });
+      if (!response.ok) {
+        return { success: false, message: `Google Apps Script returned HTTP ${response.status}.` };
+      }
+      return await response.json();
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Could not send the check-in to Google Sheets.',
+      };
+    }
+  },
+
+  async publicRecordAttendance(record: AttendanceRecord, eventType?: string): Promise<GasApiResponse> {
+    const url = this.getApiUrl();
+    if (!this.isConfigured()) {
+      return { success: false, message: 'Google Apps Script Web App URL is not configured.' };
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'publicRecordAttendance', data: { ...record, eventType } }),
+      });
+      if (!response.ok) {
+        return { success: false, message: `Google Apps Script returned HTTP ${response.status}.` };
+      }
+      return await response.json();
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'Could not save attendance to Google Sheets.',
+      };
+    }
+  },
+
   async pullAllDataForInitialMigration(): Promise<GasApiResponse<{
     members: Member[];
+    deletedMembers: DeletedMember[];
     events: AttendanceEvent[];
     schedules: EventSchedule[];
     attendance: AttendanceRecord[];
@@ -267,6 +337,14 @@ export const GasApiService = {
 
   async deleteMember(memberId: string, hardDelete: boolean = false): Promise<GasApiResponse> {
     return this.postAction('deleteMember', { memberId, hardDelete });
+  },
+
+  async trashMember(memberId: string, deletedBy: string): Promise<GasApiResponse> {
+    return this.postAction('trashMember', { memberId, deletedBy });
+  },
+
+  async restoreMember(memberId: string): Promise<GasApiResponse> {
+    return this.postAction('restoreMember', { memberId });
   },
 
   /**

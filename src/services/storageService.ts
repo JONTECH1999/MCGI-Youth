@@ -1,4 +1,4 @@
-import { Member, MemberStatusHistory } from '../types/member';
+import { DeletedMember, Member, MemberStatusHistory } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { AttendanceRecord } from '../types/attendance';
 import { SystemSettings } from '../types/settings';
@@ -22,6 +22,7 @@ export const sortMembersById = <T extends { memberId: string }>(members: T[]): T
 
 const STORAGE_KEYS = {
   MEMBERS: 'mcgi_members',
+  DELETED_MEMBERS: 'mcgi_deleted_members',
   EVENTS: 'mcgi_events',
   SCHEDULES: 'mcgi_schedules',
   ATTENDANCE: 'mcgi_attendance',
@@ -77,6 +78,27 @@ export const StorageService = {
       memberId: m.memberId || m.memberID || m.id || '',
     })));
     localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(sanitized));
+  },
+
+  getDeletedMembers(): DeletedMember[] {
+    const raw = localStorage.getItem(STORAGE_KEYS.DELETED_MEMBERS);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((member: any) => ({
+        ...member,
+        memberId: member.memberId || member.memberID || member.id || '',
+        deletedAt: member.deletedAt || '',
+        deletedBy: member.deletedBy || 'Officer',
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  saveDeletedMembers(members: DeletedMember[]) {
+    localStorage.setItem(STORAGE_KEYS.DELETED_MEMBERS, JSON.stringify(members));
   },
 
   // --- Events ---

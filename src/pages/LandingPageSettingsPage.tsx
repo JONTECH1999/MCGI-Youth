@@ -1047,9 +1047,8 @@ export const LandingPageSettingsPage: React.FC<LandingPageSettingsPageProps> = (
                 <input
                   type="text"
                   value={formData.contactLocation || ''}
-                  onChange={(e) => setFormData({ ...formData, contactLocation: e.target.value })}
-                  placeholder="Local of Ascoville"
-                  className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300"
+                  readOnly
+                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-500"
                 />
               </div>
             </div>
@@ -1284,11 +1283,8 @@ export const LandingPageSettingsPage: React.FC<LandingPageSettingsPageProps> = (
                   <input
                     type="text"
                     value={editingAnnouncement.location || ''}
-                    onChange={(e) =>
-                      setEditingAnnouncement({ ...editingAnnouncement, location: e.target.value })
-                    }
-                    placeholder="e.g. Main Sanctuary"
-                    className="w-full px-3 py-2 rounded-xl bg-white border border-slate-300"
+                    readOnly
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-500"
                   />
                 </div>
               </div>

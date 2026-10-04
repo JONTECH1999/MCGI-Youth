@@ -9,10 +9,12 @@ import {
   Edit2,
   Archive,
   Trash2,
+  RotateCcw,
+  RefreshCw,
   Users,
   ChevronDown,
 } from 'lucide-react';
-import { Member } from '../../types/member';
+import { DeletedMember, Member } from '../../types/member';
 import { AttendanceRecord } from '../../types/attendance';
 import { StatusBadge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
@@ -25,19 +27,23 @@ import { useAuth } from '../../context/AuthContext';
 
 interface MemberTableProps {
   members: Member[];
+  deletedMembers: DeletedMember[];
   attendanceRecords: AttendanceRecord[];
   onSaveMember: (member: Member) => Promise<{ success: boolean; message: string }>;
   onArchiveMember: (memberId: string, reason?: string) => Promise<{ success: boolean; message: string }>;
   onDeleteMember: (memberId: string) => Promise<{ success: boolean; message: string }>;
+  onRestoreMember: (memberId: string) => Promise<{ success: boolean; message: string }>;
   onImportMembers: (members: Member[]) => Promise<{ imported: number; updated: number }>;
 }
 
 export const MemberTable: React.FC<MemberTableProps> = ({
   members,
+  deletedMembers,
   attendanceRecords,
   onSaveMember,
   onArchiveMember,
   onDeleteMember,
+  onRestoreMember,
   onImportMembers,
 }) => {
   const { isAdmin } = useAuth();
@@ -58,6 +64,9 @@ export const MemberTable: React.FC<MemberTableProps> = ({
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashActionMessage, setTrashActionMessage] = useState<{ success: boolean; message: string } | null>(null);
+  const [restoringMemberId, setRestoringMemberId] = useState<string | null>(null);
 
   // Confirmations
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
@@ -65,7 +74,11 @@ export const MemberTable: React.FC<MemberTableProps> = ({
 
   // Filtered members
   const filteredMembers = useMemo(() => {
-    return [...members]
+    const deletedIds = new Set(deletedMembers.map((member) => member.memberId.trim().toLowerCase()));
+    const sourceMembers = showTrash
+      ? deletedMembers
+      : members.filter((member) => !deletedIds.has(member.memberId.trim().toLowerCase()));
+    return [...sourceMembers]
       .filter((m) => {
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
@@ -89,7 +102,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
         const numB = Number(String(b.memberId).replace(/[^0-9]/g, '')) || 0;
         return numA - numB;
       });
-  }, [members, searchQuery, statusFilter, categoryFilter, activityFilter, committeeFilter]);
+  }, [members, deletedMembers, showTrash, searchQuery, statusFilter, categoryFilter, activityFilter, committeeFilter]);
 
   // Paginated slice
   const paginatedMembers = useMemo(() => {
@@ -127,6 +140,30 @@ export const MemberTable: React.FC<MemberTableProps> = ({
     document.body.removeChild(link);
   };
 
+  const handleRestoreMember = async (memberId: string) => {
+    setRestoringMemberId(memberId);
+    try {
+      const result = await onRestoreMember(memberId);
+      setTrashActionMessage(result);
+      window.setTimeout(() => setTrashActionMessage(null), 4000);
+    } catch (error) {
+      setTrashActionMessage({
+        success: false,
+        message: error instanceof Error ? error.message : 'Could not restore member.',
+      });
+    } finally {
+      setRestoringMemberId(null);
+    }
+  };
+
+  const handleDeleteMember = async () => {
+    if (!deleteTargetId) return;
+    const result = await onDeleteMember(deleteTargetId);
+    if (!result.success) throw new Error(result.message);
+    setTrashActionMessage(result);
+    window.setTimeout(() => setTrashActionMessage(null), 4000);
+  };
+
   return (
     <div className="space-y-4">
       {/* Top Action Bar */}
@@ -152,29 +189,45 @@ export const MemberTable: React.FC<MemberTableProps> = ({
             <button
               type="button"
               onClick={() => {
-                setEditingMember(null);
-                setIsFormOpen(true);
+                setShowTrash((current) => !current);
+                setCurrentPage(1);
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold shadow-2xs transition ${showTrash ? 'border-slate-800 bg-slate-800 text-white' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+              aria-pressed={showTrash}
             >
-              <UserPlus className="h-4 w-4" />
-              <span>Add Member</span>
+              {showTrash ? <Users className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+              <span>{showTrash ? 'Back to Members' : 'Trash'}</span>
+              {!showTrash && <span className="rounded-full bg-slate-100 px-1.5 text-[10px]">{deletedMembers.length}</span>}
             </button>
 
-            <button
+            {!showTrash && (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingMember(null);
+                  setIsFormOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span>Add Member</span>
+              </button>
+            )}
+
+            {!showTrash && <button
               type="button"
               onClick={() => setIsImportOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50"
             >
               <Upload className="h-4 w-4 text-slate-500" />
               <span>Import Data</span>
-            </button>
+            </button>}
 
             <button
               type="button"
               onClick={handleExportCsv}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50"
-              title="Export filtered list to CSV"
+              title={showTrash ? 'Export deleted members to CSV' : 'Export filtered list to CSV'}
             >
               <Download className="h-4 w-4 text-slate-500" />
               <span>Export</span>
@@ -254,9 +307,15 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           </select>
 
           <span className="ml-auto text-xs text-slate-500 font-medium">
-            Found <span className="font-bold text-slate-900">{filteredMembers.length}</span> member(s)
+            {showTrash ? 'In Trash' : 'Found'} <span className="font-bold text-slate-900">{filteredMembers.length}</span> member(s)
           </span>
         </div>
+        {trashActionMessage && (
+          <p className={`mt-3 text-xs font-medium ${trashActionMessage.success ? 'text-emerald-700' : 'text-rose-700'}`} role="status">
+            {trashActionMessage.message}
+          </p>
+        )}
+        {showTrash && <p className="mt-3 text-[11px] text-slate-500">Items in Trash are permanently deleted 30 days after they are moved here.</p>}
       </div>
 
       {/* Responsive Member Table */}
@@ -265,7 +324,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
               <tr>
-                <th className="py-3 px-4">Member ID</th>
+                    <th className="py-3 px-4">Member ID</th>
                 <th className="py-3 px-4">Full Name</th>
                 <th className="py-3 px-4">Category</th>
                 <th className="py-3 px-4">Membership Status</th>
@@ -295,7 +354,15 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                     {/* Name */}
                     <td className="py-3 px-4">
                       <div className="font-bold text-slate-900">{member.fullName}</div>
-                      <div className="text-[11px] text-slate-500">{member.contactNumber}</div>
+                      <div className="text-[11px] text-slate-500">
+                        {member.contactNumber === '#ERROR!' ? 'Contact unavailable' : member.contactNumber}
+                      </div>
+                      {showTrash && (
+                        <div className="text-[10px] text-amber-700">
+                          Deleted {member.deletedAt ? new Date(member.deletedAt).toLocaleString() : 'date unavailable'}
+                          {member.deletedBy ? ` by ${member.deletedBy}` : ''}
+                        </div>
+                      )}
                     </td>
 
                     {/* Category */}
@@ -369,36 +436,53 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                           <Eye className="h-4 w-4" />
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingMember(member);
-                            setIsFormOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                          title="Edit Member Information"
-                        >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setArchiveTargetId(member.memberId)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600"
-                          title="Archive Member (Set Inactive)"
-                        >
-                          <Archive className="h-4 w-4" />
-                        </button>
-
-                        {isAdmin && (
+                        {showTrash ? (
                           <button
                             type="button"
-                            onClick={() => setDeleteTargetId(member.memberId)}
-                            className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
-                            title="Delete Record"
+                            onClick={() => void handleRestoreMember(member.memberId)}
+                            disabled={restoringMemberId === member.memberId}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:cursor-wait disabled:opacity-60"
+                            title="Restore member"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            {restoringMemberId === member.memberId
+                              ? <RefreshCw className="h-4 w-4 animate-spin" />
+                              : <RotateCcw className="h-4 w-4" />}
+                            <span>{restoringMemberId === member.memberId ? 'Restoring...' : 'Restore'}</span>
                           </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingMember(member);
+                                setIsFormOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                              title="Edit Member Information"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setArchiveTargetId(member.memberId)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                              title="Archive Member (Set Inactive)"
+                            >
+                              <Archive className="h-4 w-4" />
+                            </button>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => setDeleteTargetId(member.memberId)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600"
+                                title="Move to Trash"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </>
                         )}
                       </div>
                     </td>
@@ -432,7 +516,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
         onClose={() => setIsFormOpen(false)}
         onSave={onSaveMember}
         initialMember={editingMember}
-        existingMemberIds={members.map((m) => m.memberId)}
+        existingMemberIds={[...members, ...deletedMembers].map((m) => m.memberId)}
       />
 
       {/* Member Import Modal */}
@@ -440,7 +524,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
         isOpen={isImportOpen}
         onClose={() => setIsImportOpen(false)}
         onImport={onImportMembers}
-        existingMemberIds={members.map((m) => m.memberId)}
+        existingMemberIds={[...members, ...deletedMembers].map((m) => m.memberId)}
       />
 
       {/* Archive Confirmation Dialog */}
@@ -456,17 +540,15 @@ export const MemberTable: React.FC<MemberTableProps> = ({
         variant="warning"
       />
 
-      {/* Permanent Delete Confirmation Dialog */}
+      {/* Move to Trash Confirmation Dialog */}
       <ConfirmDialog
         isOpen={Boolean(deleteTargetId)}
         onClose={() => setDeleteTargetId(null)}
-        onConfirm={() => {
-          if (deleteTargetId) onDeleteMember(deleteTargetId);
-        }}
-        title="Delete Member Record?"
-        message="Are you sure you want to permanently delete this member record? This action cannot be undone."
-        confirmLabel="Permanently Delete"
-        variant="danger"
+        onConfirm={handleDeleteMember}
+        title="Move Member to Trash?"
+        message="The member will be removed from the active roster and placed in Trash. You can restore the member later; attendance history will be preserved."
+        confirmLabel="Move to Trash"
+        variant="warning"
       />
     </div>
   );
