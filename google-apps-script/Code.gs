@@ -43,11 +43,57 @@ var SHEETS = {
   OFFICIAL_SUMMARY: 'OFFICIAL_SUMMARY'
 };
 
+function isAuthorizedSupabaseStaff(accessToken) {
+  if (!accessToken) return false;
+
+  var properties = PropertiesService.getScriptProperties();
+  var supabaseUrl = (properties.getProperty('SUPABASE_URL') || '').replace(/\/$/, '');
+  var publishableKey = properties.getProperty('SUPABASE_PUBLISHABLE_KEY') || '';
+  if (!supabaseUrl || !publishableKey) return false;
+
+  try {
+    var headers = {
+      'apikey': publishableKey,
+      'Authorization': 'Bearer ' + accessToken
+    };
+    var userResponse = UrlFetchApp.fetch(supabaseUrl + '/auth/v1/user', {
+      method: 'get',
+      headers: headers,
+      muteHttpExceptions: true
+    });
+    if (userResponse.getResponseCode() !== 200) return false;
+
+    var authUser = JSON.parse(userResponse.getContentText());
+    if (!authUser.id) return false;
+
+    var profileUrl = supabaseUrl + '/rest/v1/staff_profiles?user_id=eq.' +
+      encodeURIComponent(authUser.id) + '&select=role,is_active';
+    var profileResponse = UrlFetchApp.fetch(profileUrl, {
+      method: 'get',
+      headers: headers,
+      muteHttpExceptions: true
+    });
+    if (profileResponse.getResponseCode() !== 200) return false;
+
+    var profiles = JSON.parse(profileResponse.getContentText());
+    return Array.isArray(profiles) && profiles.some(function(profile) {
+      return profile.is_active === true && (profile.role === 'ADMIN' || profile.role === 'OFFICER');
+    });
+  } catch (err) {
+    console.error('Supabase staff authorization failed: ' + err);
+    return false;
+  }
+}
+
 /**
  * Handle GET Requests
  */
 function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : 'ping';
+
+  if (action !== 'ping') {
+    return jsonResponse({ success: false, message: 'Protected data requests must use an authenticated POST.' });
+  }
   
   try {
     var result;
@@ -101,11 +147,22 @@ function doPost(e) {
     }
 
     var payload = JSON.parse(e.postData.contents);
+    if (!isAuthorizedSupabaseStaff(payload.authToken)) {
+      return jsonResponse({ success: false, message: 'Unauthorized. Sign in with an active officer account.' });
+    }
     var action = payload.action;
     var data = payload.data;
     var result;
 
     switch (action) {
+      case 'authCheck':
+        result = { success: true, message: 'Authenticated staff access verified.' };
+        break;
+
+      case 'getAllData':
+        result = handleGetAllData();
+        break;
+
       case 'initSpreadsheet':
         initializeSpreadsheetStructure();
         result = { success: true, message: 'Spreadsheet structure initialized successfully' };

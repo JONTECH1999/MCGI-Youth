@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth, AuthProvider } from './context/AuthContext';
+import { useAppData } from './context/AppDataContext';
 import { OfflineProvider } from './context/OfflineContext';
 import { AppDataProvider } from './context/AppDataContext';
 import { Layout } from './components/layout/Layout';
 import { NavItemKey, OFFICER_ALLOWED_TABS } from './components/layout/Sidebar';
+import { isSupabaseConfigured } from './services/supabaseClient';
 
 // Pages
 import { LandingPage } from './pages/LandingPage';
@@ -63,7 +65,8 @@ const parseLocation = (): { view: 'public' | 'admin'; tab: NavItemKey } => {
 };
 
 const AppContent: React.FC = () => {
-  const { isAuthenticated, isAdmin, logout } = useAuth();
+  const { isAuthenticated, isAdmin, isAuthReady, logout } = useAuth();
+  const { isLoading: isAppDataLoading } = useAppData();
   const [navigation, setNavigation] = useState<{ view: 'public' | 'admin'; tab: NavItemKey }>(() => parseLocation());
 
   const viewMode = navigation.view;
@@ -93,6 +96,10 @@ const AppContent: React.FC = () => {
     window.location.hash = 'admin/dashboard';
   }, [currentTab, isAuthenticated, isAdmin]);
 
+  useEffect(() => {
+    if (isSupabaseConfigured && viewMode === 'public' && isAuthenticated) logout();
+  }, [viewMode, isAuthenticated, logout]);
+
   // Sync state on hash change (e.g. browser Back / Forward buttons)
   useEffect(() => {
     const handleHashChange = () => {
@@ -116,6 +123,14 @@ const AppContent: React.FC = () => {
 
   if (viewMode === 'public') {
     return <LandingPage onEnterAdmin={() => navigateTo('admin', currentTab || 'dashboard')} />;
+  }
+
+  if (!isAuthReady || (viewMode === 'admin' && isAuthenticated && isAppDataLoading)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-cream-100 text-charcoal-800 text-sm">
+        Restoring secure officer session...
+      </div>
+    );
   }
 
   // Admin access strictly gated behind Officer / Admin Authentication

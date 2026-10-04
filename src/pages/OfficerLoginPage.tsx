@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useAppData } from '../context/AppDataContext';
+import { isLocalDemoAuthEnabled, isSupabaseConfigured } from '../services/supabaseClient';
 
 interface OfficerLoginPageProps {
   onSuccess: () => void;
@@ -111,7 +112,7 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
             <div className="space-y-1.5">
               <label className="block font-bold text-slate-300 uppercase tracking-wider">
-                Officer Username or Email
+                {isSupabaseConfigured || !isLocalDemoAuthEnabled ? 'Supabase Account Email' : 'Officer Username or Email'}
               </label>
               <input
                 type="text"
@@ -119,14 +120,14 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
                 autoFocus
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. aljon.admin or officer.attendance"
+                placeholder={isSupabaseConfigured || !isLocalDemoAuthEnabled ? 'Enter your Supabase Auth email' : 'e.g. aljon.admin or officer.attendance'}
                 className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white placeholder-slate-500 text-sm outline-none transition"
               />
             </div>
 
             <div className="space-y-1.5">
               <label className="block font-bold text-slate-300 uppercase tracking-wider">
-                Officer Passkey
+                {isSupabaseConfigured || !isLocalDemoAuthEnabled ? 'Account Password' : 'Officer Passkey'}
               </label>
               <div className="relative">
                 <input
@@ -166,7 +167,7 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
           </form>
 
           {/* Quick-Fill Demo Officer Cards */}
-          <div className="pt-4 border-t border-slate-800 space-y-2.5">
+          {isLocalDemoAuthEnabled && !isSupabaseConfigured && <div className="pt-4 border-t border-slate-800 space-y-2.5">
             <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               <span>Attendance Officer Profile</span>
             </div>
@@ -184,18 +185,20 @@ export const OfficerLoginPage: React.FC<OfficerLoginPageProps> = ({ onSuccess, o
                 <p className="text-[10px] text-slate-400 mt-0.5">Attendance Officer</p>
               </button>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Security Notice */}
         <p className="text-center text-[11px] text-slate-500 max-w-sm mx-auto">
-          All administrative operations, attendance edits, and member changes are signed and permanently logged in the official Google Sheets audit log.
+            {isSupabaseConfigured || !isLocalDemoAuthEnabled
+            ? 'Administrative data is protected by Supabase Auth and database row-level security.'
+            : 'Administrative operations, attendance edits, and member changes are logged in the Google Sheets audit log.'}
         </p>
       </div>
 
       {/* Footer */}
       <div className="max-w-7xl mx-auto w-full text-center text-xs text-slate-600">
-        MCGI Youth Membership, Attendance & Reporting System • Google Sheets Architecture
+        MCGI Youth Membership, Attendance & Reporting System • {isSupabaseConfigured ? 'Supabase Database' : 'Google Sheets Architecture'}
       </div>
     </div>
   );

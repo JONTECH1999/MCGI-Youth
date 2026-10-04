@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Lock, X, Shield, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Lock, X, ArrowRight, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { isLocalDemoAuthEnabled, isSupabaseConfigured } from '../../services/supabaseClient';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -13,9 +14,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   onClose,
   onSuccessLogin,
 }) => {
-  const { login, officers } = useAuth();
-  const [identifier, setIdentifier] = useState('aljon.admin');
-  const [passkey, setPasskey] = useState('1234');
+  const { login } = useAuth();
+  const [identifier, setIdentifier] = useState('');
+  const [passkey, setPasskey] = useState('');
   const [showPasskey, setShowPasskey] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,12 +43,6 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     }
   };
 
-  const handleSelectQuickOfficer = (username: string) => {
-    setIdentifier(username);
-    setPasskey('1234');
-    setError(null);
-  };
-
   return (
     <div
       role="dialog"
@@ -71,7 +66,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <Lock className="w-6 h-6" />
           </div>
           <h3 className="text-xl font-extrabold text-stone-900 tracking-tight">
-            Officer & Admin Portal
+            Officer Portal
           </h3>
           <p className="text-xs text-stone-500">
             Sign in with authorized youth officer credentials to access the administrative system.
@@ -81,40 +76,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <label className="block text-xs font-bold uppercase tracking-wider text-stone-700">
-              Select Officer Profile:
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              {officers.slice(0, 2).map((off) => (
-                <button
-                  key={off.id}
-                  type="button"
-                  onClick={() => handleSelectQuickOfficer(off.username)}
-                  className={`p-2.5 rounded-xl border text-left cursor-pointer transition ${
-                    identifier === off.username
-                      ? 'border-amber-700 bg-amber-50/80 ring-1 ring-amber-700'
-                      : 'border-stone-200 bg-stone-50/60 hover:bg-stone-100'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-stone-900 truncate">{off.fullName.split(' ')[1] || off.fullName}</span>
-                    <span className="text-[10px] px-1 py-0.2 rounded font-bold bg-amber-200 text-amber-900">{off.role}</span>
-                  </div>
-                  <p className="text-[10px] text-stone-500 mt-0.5 truncate">{off.title}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold uppercase tracking-wider text-stone-700">
-              Username or Email
+              {isSupabaseConfigured ? 'Supabase Account Email' : isLocalDemoAuthEnabled ? 'Officer Username or Email' : 'Supabase Account Email'}
             </label>
             <input
               type="text"
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="e.g. aljon.admin"
+              placeholder={isSupabaseConfigured || !isLocalDemoAuthEnabled ? 'Enter your Supabase Auth email' : 'Enter your officer username or email'}
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-stone-300 focus:border-amber-700 text-stone-900 text-xs font-medium outline-none"
             />
           </div>
@@ -122,9 +91,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-700">
-                Officer Passkey
+                {isSupabaseConfigured || !isLocalDemoAuthEnabled ? 'Account Password' : 'Officer Passkey'}
               </label>
-              <span className="text-[10px] text-stone-400">Default: 1234</span>
             </div>
             <div className="relative">
               <input

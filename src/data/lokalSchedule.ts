@@ -198,6 +198,46 @@ export function formatDateYYYYMMDD(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+const getPhilippineDateTime = (date: Date) => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((item) => item.type === type)?.value);
+  const year = part('year');
+  const month = part('month');
+  const day = part('day');
+  const hour = part('hour');
+  const minute = part('minute');
+  return {
+    year,
+    month,
+    day,
+    currentDay: new Date(Date.UTC(year, month - 1, day)).getUTCDay(),
+    currentMinutes: hour * 60 + minute,
+  };
+};
+
+const formatUTCDate = (date: Date): string => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+export function getUpcomingRegularGatheringDate(slot: RegularGatheringSlot, now: Date = new Date()): string {
+  const { year, month, day, currentDay, currentMinutes } = getPhilippineDateTime(now);
+  const [hours, minutes] = slot.time24.split(':').map(Number);
+  let daysUntilSlot = (slot.dayOfWeek - currentDay + 7) % 7;
+  if (daysUntilSlot === 0 && hours * 60 + minutes <= currentMinutes) daysUntilSlot = 7;
+  return formatUTCDate(new Date(Date.UTC(year, month - 1, day + daysUntilSlot)));
+}
+
 /**
  * Determine the automated gathering slot based on current day and time
  */
@@ -206,8 +246,8 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
   isToday: boolean;
   dateStr: string;
 } {
-  const currentDay = now.getDay(); // 0-6
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const { year, month, day, currentDay, currentMinutes } = getPhilippineDateTime(now);
+  const todayDate = new Date(Date.UTC(year, month - 1, day));
 
   // 1. Check if today has gathering slots
   const todaySlots = LOKAL_REGULAR_SCHEDULES
@@ -226,7 +266,7 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
         return {
           slot,
           isToday: true,
-          dateStr: formatDateYYYYMMDD(now),
+          dateStr: formatUTCDate(todayDate),
         };
       }
     }
@@ -235,8 +275,8 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
   // 2. If no slot remaining today (or today is a non-gathering day like Mon/Tue/Fri):
   // Find the next upcoming slot in the week
   for (let offset = (todaySlots.length > 0 ? 1 : 0); offset <= 7; offset++) {
-    const targetDate = new Date(now.getTime() + offset * 24 * 60 * 60 * 1000);
-    const targetDay = targetDate.getDay();
+    const targetDate = new Date(Date.UTC(year, month - 1, day + offset));
+    const targetDay = targetDate.getUTCDay();
     const candidateSlots = LOKAL_REGULAR_SCHEDULES
       .filter((s) => s.dayOfWeek === targetDay)
       .sort(compareRegularGatheringSlots);
@@ -246,7 +286,7 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
       return {
         slot: candidateSlots[0],
         isToday: offset === 0,
-        dateStr: formatDateYYYYMMDD(targetDate),
+        dateStr: formatUTCDate(targetDate),
       };
     }
   }
@@ -255,7 +295,7 @@ export function getAutomatedGatheringSlot(now: Date = new Date()): {
   return {
     slot: LOKAL_REGULAR_SCHEDULES[0],
     isToday: false,
-    dateStr: formatDateYYYYMMDD(now),
+    dateStr: formatUTCDate(todayDate),
   };
 }
 

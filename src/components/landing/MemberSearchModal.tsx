@@ -1,6 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, X, User, ArrowRight, ShieldCheck, HelpCircle } from 'lucide-react';
 import { Member } from '../../types/member';
+import { isSupabaseRequired } from '../../services/supabaseClient';
+
+interface SecureCheckInResult {
+  success: boolean;
+  duplicate?: boolean;
+  message: string;
+}
 
 interface MemberSearchModalProps {
   isOpen: boolean;
@@ -11,6 +18,7 @@ interface MemberSearchModalProps {
   activeGatheringTitle?: string;
   onQuickAttend?: (member: Member) => Promise<void>;
   isAlreadyAttended?: (memberId: string) => boolean;
+  onSecureCheckIn?: (memberId: string, birthday: string) => Promise<SecureCheckInResult>;
 }
 
 export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
@@ -22,10 +30,15 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
   activeGatheringTitle,
   onQuickAttend,
   isAlreadyAttended,
+  onSecureCheckIn,
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [prevInitialQuery, setPrevInitialQuery] = useState(initialQuery);
   const [attendingMemberId, setAttendingMemberId] = useState<string | null>(null);
+  const [secureMemberId, setSecureMemberId] = useState('');
+  const [secureBirthday, setSecureBirthday] = useState('');
+  const [secureResult, setSecureResult] = useState<SecureCheckInResult | null>(null);
+  const [isSecureSubmitting, setIsSecureSubmitting] = useState(false);
 
   if (initialQuery !== prevInitialQuery) {
     setPrevInitialQuery(initialQuery);
@@ -76,8 +89,92 @@ export const MemberSearchModal: React.FC<MemberSearchModalProps> = ({
     } finally {
       setAttendingMemberId(null);
     }
+
+    const handleSecureCheckIn = async (event: React.FormEvent) => {
+      event.preventDefault();
+      if (!onSecureCheckIn) return;
+      setIsSecureSubmitting(true);
+      setSecureResult(null);
+      try {
+        setSecureResult(await onSecureCheckIn(secureMemberId, secureBirthday));
+      } catch {
+        setSecureResult({ success: false, message: 'Check-in could not be completed. Please try again or ask an officer for help.' });
+      } finally {
+        setIsSecureSubmitting(false);
+      }
+    };
   };
 
+
+    if (isSupabaseRequired) {
+      return (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-stone-950/70 p-4 pt-12 backdrop-blur-xs animate-in fade-in duration-200 sm:pt-20"
+          onClick={onClose}
+        >
+          <div
+            className="relative w-full max-w-xl overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-2xl animate-in zoom-in-95 duration-150"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="border-b border-stone-100 bg-[#FAF7F2] p-5 sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="rounded-lg bg-amber-100 p-1.5 text-amber-800"><Search className="h-4 w-4" /></span>
+                  <div>
+                    <h3 className="text-lg font-bold leading-tight text-stone-900">Secure Member Check-In</h3>
+                    {activeGatheringTitle && <p className="mt-0.5 text-xs font-semibold text-amber-800">For: {activeGatheringTitle}</p>}
+                  </div>
+                </div>
+                <button onClick={onClose} className="rounded-lg p-1.5 text-stone-400 transition hover:bg-stone-200/50 hover:text-stone-700" aria-label="Close check-in">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <form onSubmit={handleSecureCheckIn} className="space-y-4 p-5 sm:p-6">
+              <p className="text-sm leading-relaxed text-stone-600">Verify with your Member ID and full birthday. Your private member record is checked securely without loading the member list into this browser.</p>
+              <div className="space-y-1.5">
+                <label htmlFor="secure-checkin-member-id" className="block text-xs font-bold uppercase tracking-wider text-stone-700">Member ID</label>
+                <input
+                  id="secure-checkin-member-id"
+                  autoFocus
+                  required
+                  value={secureMemberId}
+                  onChange={(event) => setSecureMemberId(event.target.value)}
+                  placeholder="e.g. M-1001"
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-3 font-mono text-sm uppercase text-stone-900 outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label htmlFor="secure-checkin-birthday" className="block text-xs font-bold uppercase tracking-wider text-stone-700">Full Birthday</label>
+                <input
+                  id="secure-checkin-birthday"
+                  type="date"
+                  required
+                  value={secureBirthday}
+                  onChange={(event) => setSecureBirthday(event.target.value)}
+                  className="w-full rounded-xl border border-stone-300 bg-white px-3.5 py-3 text-sm text-stone-900 outline-none focus:border-amber-700 focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+              {secureResult && (
+                <div className={`rounded-xl border p-3 text-sm ${secureResult.success ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`} role="status">
+                  {secureResult.message}
+                </div>
+              )}
+              <button
+                type="submit"
+                disabled={isSecureSubmitting || !onSecureCheckIn}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:cursor-wait disabled:opacity-60"
+              >
+                <ShieldCheck className="h-4 w-4" />
+                {isSecureSubmitting ? 'Verifying...' : 'Verify & Record Attendance'}
+              </button>
+            </form>
+          </div>
+        </div>
+      );
+    }
   return (
     <div
       role="dialog"

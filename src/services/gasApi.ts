@@ -6,6 +6,23 @@ import { SystemSettings } from '../types/settings';
 import { ReportSnapshot } from '../types/reports';
 import { Announcement } from '../types/announcement';
 import { LandingPageConfig } from '../types/landingPage';
+import { isSupabaseConfigured, supabase } from './supabaseClient';
+
+const getSupabaseAccessToken = async (): Promise<string | null> => {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const { data, error } = await supabase.auth.getSession();
+  return error ? null : data.session?.access_token || null;
+};
+
+const verifyAppsScriptStaffAccess = async (url: string, token: string): Promise<GasApiResponse> => {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'authCheck', authToken: token }),
+  });
+  if (!response.ok) return { success: false, message: `Google Apps Script returned HTTP ${response.status}.` };
+  return await response.json();
+};
 
 export interface GasApiResponse<T = any> {
   success: boolean;
@@ -54,16 +71,15 @@ export const GasApiService = {
     }
 
     try {
-      const pingUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}action=ping`;
-      const response = await fetch(pingUrl, {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      if (isSupabaseConfigured) {
+        const token = await getSupabaseAccessToken();
+        if (!token) return { success: false, message: 'Sign in with an active officer account first.' };
+        return await verifyAppsScriptStaffAccess(rawUrl, token);
       }
 
+      const pingUrl = `${rawUrl}${rawUrl.includes('?') ? '&' : '?'}action=ping`;
+      const response = await fetch(pingUrl, { method: 'GET', headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       const json = await response.json();
       return json;
     } catch (err: any) {
@@ -92,6 +108,9 @@ export const GasApiService = {
     statusHistory: any[];
     reports: ReportSnapshot[];
   }>> {
+    if (isSupabaseConfigured) {
+      return { success: false, message: 'Supabase is the source of truth. Pull data from Supabase instead of Google Sheets.' };
+    }
     const url = this.getApiUrl();
     if (!this.isConfigured()) {
       return {
@@ -101,7 +120,12 @@ export const GasApiService = {
     }
 
     try {
-      const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}action=getAllData`;
+      const authToken = await getSupabaseAccessToken();
+      if (isSupabaseConfigured && !authToken) {
+        return { success: false, message: 'Sign in with an active officer account before reading Google Sheets.' };
+      }
+      const tokenQuery = authToken ? `&authToken=${encodeURIComponent(authToken)}` : '';
+      const fetchUrl = `${url}${url.includes('?') ? '&' : '?'}action=getAllData${tokenQuery}`;
       const response = await fetch(fetchUrl, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
@@ -122,6 +146,22 @@ export const GasApiService = {
     }
   },
 
+  async pullAllDataForInitialMigration(): Promise<GasApiResponse<{
+    members: Member[];
+    events: AttendanceEvent[];
+    schedules: EventSchedule[];
+    attendance: AttendanceRecord[];
+    settings: any[];
+    activityLogs: any[];
+    statusHistory: any[];
+    reports: ReportSnapshot[];
+  }>> {
+    if (!isSupabaseConfigured || !this.isConfigured()) {
+      return { success: false, message: 'Supabase and a configured Google Apps Script connection are required for initial import.' };
+    }
+    return this.postAction('getAllData', {});
+  },
+
   /**
    * Generic POST caller to Google Apps Script
    */
@@ -130,6 +170,12 @@ export const GasApiService = {
 
     // If not configured
     if (!this.isConfigured()) {
+      if (isSupabaseConfigured) {
+        return {
+          success: false,
+          message: 'Google Apps Script is not configured; the Supabase save can still succeed without a Sheets copy.',
+        };
+      }
       if (['initSpreadsheet', 'pushAllData', 'saveOfficialSummary'].includes(action)) {
         return {
           success: false,
@@ -144,13 +190,23 @@ export const GasApiService = {
     }
 
     try {
+      const authToken = await getSupabaseAccessToken();
+      if (isSupabaseConfigured && !authToken) {
+        return { success: false, message: 'Sign in with an active officer account before writing to Google Sheets.' };
+      }
+      if (authToken) {
+        const authorization = await verifyAppsScriptStaffAccess(url, authToken);
+        if (!authorization.success) {
+          return { success: false, message: authorization.message || 'Google Apps Script authorization is not configured.' };
+        }
+      }
       // Use text/plain to avoid CORS preflight issues with Google Apps Script web apps
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain;charset=utf-8',
         },
-        body: JSON.stringify({ action, data }),
+        body: JSON.stringify({ action, data, authToken }),
       });
 
       if (!response.ok) {

@@ -5,8 +5,6 @@ import { SystemSettings } from '../types/settings';
 import { ActivityLog, ReportSnapshot } from '../types/reports';
 import { Announcement } from '../types/announcement';
 import { LandingPageConfig } from '../types/landingPage';
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE_RECORDS } from '../data/sampleMembers';
-import { SAMPLE_EVENTS, SAMPLE_SCHEDULES } from '../data/sampleEvents';
 import { DEFAULT_SETTINGS } from '../data/defaultSettings';
 import { SAMPLE_ANNOUNCEMENTS } from '../data/sampleAnnouncements';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
@@ -23,6 +21,7 @@ const STORAGE_KEYS = {
   STATUS_HISTORY: 'mcgi_status_history',
   REPORTS: 'mcgi_reports',
   PENDING_SYNC: 'mcgi_pending_sync_queue',
+  ANNOUNCEMENT_DEFAULTS_VERSION: 'mcgi_announcement_defaults_version',
 };
 
 export interface SyncQueueItem {
@@ -36,28 +35,19 @@ export const StorageService = {
   // --- Members ---
   getMembers(): Member[] {
     const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
-    if (!raw) {
-      this.saveMembers(INITIAL_MEMBERS);
-      return INITIAL_MEMBERS;
-    }
+    if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      // Migrate from old sample data (10 mock members) to the 66 official youth members
       if (Array.isArray(parsed)) {
-        if (parsed.length <= 10 || parsed.some((m: any) => m.fullName === 'Juan Dela Cruz' || m.lastName === 'Dela Cruz')) {
-          this.saveMembers(INITIAL_MEMBERS);
-          return INITIAL_MEMBERS;
-        }
-        // Normalize any member loaded from localStorage (repair memberID -> memberId)
         const normalized = parsed.map((m: any) => ({
           ...m,
           memberId: m.memberId || m.memberID || m.id || '',
         }));
         return normalized;
       }
-      return INITIAL_MEMBERS;
+      return [];
     } catch {
-      return INITIAL_MEMBERS;
+      return [];
     }
   },
 
@@ -73,21 +63,18 @@ export const StorageService = {
   // --- Events ---
   getEvents(): AttendanceEvent[] {
     const raw = localStorage.getItem(STORAGE_KEYS.EVENTS);
-    if (!raw) {
-      this.saveEvents(SAMPLE_EVENTS);
-      return SAMPLE_EVENTS;
-    }
+    if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed.map((e: any) => ({
           ...e,
           eventId: e.eventId || e.eventID || e.id || '',
         }));
       }
-      return SAMPLE_EVENTS;
+      return [];
     } catch {
-      return SAMPLE_EVENTS;
+      return [];
     }
   },
 
@@ -102,22 +89,19 @@ export const StorageService = {
   // --- Schedules ---
   getSchedules(): EventSchedule[] {
     const raw = localStorage.getItem(STORAGE_KEYS.SCHEDULES);
-    if (!raw) {
-      this.saveSchedules(SAMPLE_SCHEDULES);
-      return SAMPLE_SCHEDULES;
-    }
+    if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         return parsed.map((s: any) => ({
           ...s,
           scheduleId: s.scheduleId || s.scheduleID || s.id || '',
           eventId: s.eventId || s.eventID || '',
         }));
       }
-      return SAMPLE_SCHEDULES;
+      return [];
     } catch {
-      return SAMPLE_SCHEDULES;
+      return [];
     }
   },
 
@@ -133,17 +117,10 @@ export const StorageService = {
   // --- Attendance Records ---
   getAttendance(): AttendanceRecord[] {
     const raw = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
-    if (!raw) {
-      this.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
-      return INITIAL_ATTENDANCE_RECORDS;
-    }
+    if (!raw) return [];
     try {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        if (parsed.some((a: any) => a.memberName === 'Juan Dela Cruz')) {
-          this.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
-          return INITIAL_ATTENDANCE_RECORDS;
-        }
         return parsed.map((a: any) => ({
           ...a,
           attendanceId: a.attendanceId || a.attendanceID || a.id || '',
@@ -152,9 +129,9 @@ export const StorageService = {
           eventId: a.eventId || a.eventID || '',
         }));
       }
-      return INITIAL_ATTENDANCE_RECORDS;
+      return [];
     } catch {
-      return INITIAL_ATTENDANCE_RECORDS;
+      return [];
     }
   },
 
@@ -174,10 +151,25 @@ export const StorageService = {
     const raw = localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENTS);
     if (!raw) {
       this.saveAnnouncements(SAMPLE_ANNOUNCEMENTS);
+      localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_DEFAULTS_VERSION, '2026-10-events-v1');
       return SAMPLE_ANNOUNCEMENTS;
     }
     try {
-      return JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return SAMPLE_ANNOUNCEMENTS;
+
+      if (localStorage.getItem(STORAGE_KEYS.ANNOUNCEMENT_DEFAULTS_VERSION) !== '2026-10-events-v1') {
+        const existingIds = new Set(parsed.map((announcement: Announcement) => announcement.announcementId));
+        const missingDefaults = SAMPLE_ANNOUNCEMENTS.filter(
+          (announcement) => !existingIds.has(announcement.announcementId)
+        );
+        const migrated = [...parsed, ...missingDefaults];
+        this.saveAnnouncements(migrated);
+        localStorage.setItem(STORAGE_KEYS.ANNOUNCEMENT_DEFAULTS_VERSION, '2026-10-events-v1');
+        return migrated;
+      }
+
+      return parsed;
     } catch {
       return SAMPLE_ANNOUNCEMENTS;
     }

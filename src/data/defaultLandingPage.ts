@@ -57,7 +57,7 @@ export const DEFAULT_LANDING_PAGE_CONFIG: LandingPageConfig = {
   showAnnouncements: true,
   announcementsTitle: 'Digital Announcement Board',
   announcementsSubtitle: 'Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.',
-  announcementsLimit: 4,
+  announcementsLimit: 9,
   showUpcomingEvents: true,
   updatedAt: '2026-10-01T08:00:00Z',
 };

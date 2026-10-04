@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Member, MemberStatusHistory } from '../types/member';
 import { AttendanceEvent, EventSchedule } from '../types/event';
 import { AttendanceRecord } from '../types/attendance';
@@ -10,8 +10,9 @@ import { StorageService } from '../services/storageService';
 import { GasApiService, GasApiResponse } from '../services/gasApi';
 import { StatsService } from '../services/statsService';
 import { AttendanceService } from '../services/attendanceService';
+import { SupabaseDataService, SupabaseDataSnapshot } from '../services/supabaseDataService';
+import { isSupabaseConfigured, isSupabaseRequired, supabase } from '../services/supabaseClient';
 import { DEFAULT_LANDING_PAGE_CONFIG } from '../data/defaultLandingPage';
-import { INITIAL_MEMBERS, INITIAL_ATTENDANCE_RECORDS } from '../data/sampleMembers';
 import { useAuth } from './AuthContext';
 
 interface AppDataContextType {
@@ -78,7 +79,6 @@ interface AppDataContextType {
   // Backup & Restore
   exportBackup: () => string;
   restoreBackup: (json: string) => boolean;
-  resetToOfficialMembers: () => void;
 }
 
 const AppDataContext = createContext<AppDataContextType | undefined>(undefined);
@@ -99,23 +99,48 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [reports, setReports] = useState<ReportSnapshot[]>([]);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLocalDataReady, setIsLocalDataReady] = useState(false);
+  const [isSupabaseDataReady, setIsSupabaseDataReady] = useState(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [connectionStatus, setConnectionStatus] = useState<'Connected' | 'Disconnected' | 'Checking' | 'Error'>('Disconnected');
   const [connectionError, setConnectionError] = useState<string | undefined>();
   const [lastSyncTimestamp, setLastSyncTimestamp] = useState<string | undefined>(settings.googleSheets.lastSyncTimestamp);
+  const previousSupabaseUserIdRef = useRef(user?.id ?? null);
+
+  const persistSupabase = async (operation: () => Promise<void>): Promise<string | null> => {
+    if (!supabase || !user || !isSupabaseDataReady) return null;
+    try {
+      await operation();
+      await SupabaseDataService.saveLogs(StorageService.getLogs());
+      return null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Supabase write failed.';
+      setConnectionStatus('Error');
+      setConnectionError(message);
+      console.error('Supabase write failed:', error);
+      return message;
+    }
+  };
+
+  const getPersistenceMessage = (response: GasApiResponse, fallback: string): string => {
+    if (!isSupabaseConfigured) return response.message || fallback;
+    if (response.success) return `${fallback} Supabase and Google Sheets are updated.`;
+    return `${fallback} Saved to Supabase. Google Sheets was not updated: ${response.message || 'not configured.'}`;
+  };
 
   // Load local data on mount
   const refreshLocalData = useCallback(() => {
-    const loadedMembers = StorageService.getMembers();
+    const includePrivateLocalData = !isSupabaseRequired || Boolean(user);
+    const loadedMembers = includePrivateLocalData ? StorageService.getMembers() : [];
     const loadedEvents = StorageService.getEvents();
     const loadedSchedules = StorageService.getSchedules();
-    const loadedAttendance = StorageService.getAttendance();
+    const loadedAttendance = includePrivateLocalData ? StorageService.getAttendance() : [];
     const loadedAnnouncements = StorageService.getAnnouncements();
     const loadedLandingPage = StorageService.getLandingPageConfig();
     const loadedSettings = StorageService.getSettings();
-    const loadedLogs = StorageService.getLogs();
-    const loadedHistory = StorageService.getStatusHistory();
-    const loadedReports = StorageService.getReports();
+    const loadedLogs = includePrivateLocalData ? StorageService.getLogs() : [];
+    const loadedHistory = includePrivateLocalData ? StorageService.getStatusHistory() : [];
+    const loadedReports = includePrivateLocalData ? StorageService.getReports() : [];
 
     setMembers(loadedMembers);
     setEvents(loadedEvents);
@@ -129,15 +154,177 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setReports(loadedReports);
     setLastSyncTimestamp(loadedSettings.googleSheets.lastSyncTimestamp);
     setIsLoading(false);
-  }, []);
+    setIsLocalDataReady(true);
+  }, [user?.id]);
 
   useEffect(() => {
     refreshLocalData();
   }, [refreshLocalData]);
 
+  useEffect(() => {
+    const previousUserId = previousSupabaseUserIdRef.current;
+    if (isSupabaseRequired && previousUserId && !user) {
+      StorageService.saveMembers([]);
+      StorageService.saveAttendance([]);
+      StorageService.saveLogs([]);
+      StorageService.saveStatusHistory([]);
+      StorageService.saveReports([]);
+      localStorage.removeItem('mcgi_portal_member');
+      setMembers([]);
+      setAttendance([]);
+      setLogs([]);
+      setStatusHistory([]);
+      setReports([]);
+    }
+    previousSupabaseUserIdRef.current = user?.id ?? null;
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+
+    void SupabaseDataService.loadPublic()
+      .then((remote) => {
+        if (!active) return;
+        if (remote.announcements.length) {
+          StorageService.saveAnnouncements(remote.announcements);
+          setAnnouncements(remote.announcements);
+        }
+        if (remote.events.length) {
+          StorageService.saveEvents(remote.events);
+          setEvents(remote.events);
+        }
+        if (remote.schedules.length) {
+          StorageService.saveSchedules(remote.schedules);
+          setSchedules(remote.schedules);
+        }
+        if (remote.landingPage) {
+          StorageService.saveLandingPageConfig(remote.landingPage);
+          setLandingPageConfig(remote.landingPage);
+        }
+      })
+      .catch((error: unknown) => console.warn('Could not load public Supabase data:', error));
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !user || !isLocalDataReady) {
+      setIsSupabaseDataReady(false);
+      return;
+    }
+
+    let active = true;
+    setIsLoading(true);
+
+    const loadStaffData = async () => {
+      try {
+        if (user.role === 'ADMIN' && await SupabaseDataService.isEmpty()) {
+          let localSnapshot: SupabaseDataSnapshot = {
+            members: StorageService.getMembers(),
+            events: StorageService.getEvents(),
+            schedules: StorageService.getSchedules(),
+            attendance: StorageService.getAttendance(),
+            announcements: StorageService.getAnnouncements(),
+            landingPage: StorageService.getLandingPageConfig(),
+            settings: StorageService.getSettings(),
+            logs: StorageService.getLogs(),
+            statusHistory: StorageService.getStatusHistory(),
+            reports: StorageService.getReports(),
+          };
+
+          if (!localSnapshot.members.length && GasApiService.isConfigured()) {
+            const legacyData = await GasApiService.pullAllDataForInitialMigration();
+            if (!legacyData.success || !legacyData.data) {
+              throw new Error(legacyData.message || 'Could not securely import the existing Google Sheets roster.');
+            }
+            localSnapshot = {
+              ...localSnapshot,
+              members: (legacyData.data.members || []).map((member: any) => ({
+                ...member,
+                memberId: member.memberId || member.memberID || member.id || '',
+                committees: Array.isArray(member.committees)
+                  ? member.committees
+                  : member.committees
+                  ? String(member.committees).split(',').map((committee: string) => committee.trim()).filter(Boolean)
+                  : [],
+              })),
+              events: (legacyData.data.events || []).map((event: any) => ({
+                ...event,
+                eventId: event.eventId || event.eventID || event.id || '',
+              })),
+              schedules: (legacyData.data.schedules || []).map((schedule: any) => ({
+                ...schedule,
+                scheduleId: schedule.scheduleId || schedule.scheduleID || schedule.id || '',
+                eventId: schedule.eventId || schedule.eventID || '',
+              })),
+              attendance: (legacyData.data.attendance || []).map((record: any) => ({
+                ...record,
+                attendanceId: record.attendanceId || record.attendanceID || record.id || '',
+                memberId: record.memberId || record.memberID || '',
+                eventId: record.eventId || record.eventID || '',
+                scheduleId: record.scheduleId || record.scheduleID || '',
+              })),
+              logs: legacyData.data.activityLogs || localSnapshot.logs,
+              statusHistory: legacyData.data.statusHistory || localSnapshot.statusHistory,
+              reports: legacyData.data.reports || localSnapshot.reports,
+            };
+          }
+
+          if (localSnapshot.members.length) {
+            await SupabaseDataService.seed(localSnapshot);
+          } else {
+            console.warn('Supabase is empty and no member roster was found. Import real members before seeding application data.');
+          }
+        }
+
+        const remote = await SupabaseDataService.loadStaff();
+        if (!active) return;
+
+        StorageService.saveMembers(remote.members);
+        StorageService.saveEvents(remote.events);
+        StorageService.saveSchedules(remote.schedules);
+        StorageService.saveAttendance(remote.attendance);
+        StorageService.saveAnnouncements(remote.announcements);
+        StorageService.saveLogs(remote.logs);
+        StorageService.saveStatusHistory(remote.statusHistory);
+        StorageService.saveReports(remote.reports);
+        if (remote.landingPage) StorageService.saveLandingPageConfig(remote.landingPage);
+        if (remote.settings) StorageService.saveSettings(remote.settings);
+
+        setMembers(remote.members);
+        setEvents(remote.events);
+        setSchedules(remote.schedules);
+        setAttendance(remote.attendance);
+        setAnnouncements(remote.announcements);
+        setLogs(remote.logs);
+        setStatusHistory(remote.statusHistory);
+        setReports(remote.reports);
+        if (remote.landingPage) setLandingPageConfig(remote.landingPage);
+        if (remote.settings) setSettings(remote.settings);
+        setIsSupabaseDataReady(true);
+        setConnectionStatus('Connected');
+        setConnectionError(undefined);
+      } catch (error) {
+        console.error('Could not load Supabase data:', error);
+        setConnectionStatus('Error');
+        setConnectionError(error instanceof Error ? error.message : 'Could not load Supabase data.');
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    void loadStaffData();
+    return () => {
+      active = false;
+    };
+  }, [user?.id, isLocalDataReady]);
+
   // Initial connection check & auto-sync from Google Sheets on mount / URL change
   useEffect(() => {
-    if (GasApiService.isConfigured()) {
+    if (GasApiService.isConfigured() && !isSupabaseRequired) {
       setConnectionStatus('Checking');
       GasApiService.testConnection().then((res) => {
         if (res.success) {
@@ -158,7 +345,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Window focus listener: auto-fetch changes when user returns to web app after editing Google Sheets
   useEffect(() => {
     const handleFocus = () => {
-      if (GasApiService.isConfigured() && !isSyncing) {
+      if (GasApiService.isConfigured() && !isSupabaseRequired && !isSyncing) {
         syncFromGoogleSheets();
       }
     };
@@ -186,6 +373,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
    * Sync All Data from Google Sheets
    */
   const syncFromGoogleSheets = async (): Promise<{ success: boolean; message: string }> => {
+    if (isSupabaseRequired) {
+      return { success: false, message: 'Supabase is the source of truth. Google Sheets pulls are disabled to prevent overwriting newer data.' };
+    }
     if (!GasApiService.isConfigured()) {
       return { success: false, message: 'Google Apps Script Web App URL is not configured in Settings.' };
     }
@@ -413,7 +603,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Send to Google Sheets (or queue if offline)
     const apiRes = await GasApiService.saveMember(memberToSave);
-    return { success: true, message: apiRes.message || 'Member saved successfully.' };
+    const dbError = await persistSupabase(async () => {
+      await SupabaseDataService.saveMembers([memberToSave]);
+      await SupabaseDataService.saveStatusHistory(StorageService.getStatusHistory());
+    });
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Member saved successfully.') };
   };
 
   /**
@@ -449,7 +644,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.deleteMember(memberId, false); // Safe archive
-    return { success: true, message: apiRes.message || 'Member archived as Inactive.' };
+    const dbError = await persistSupabase(async () => {
+      await SupabaseDataService.saveMembers([updatedMember]);
+      await SupabaseDataService.saveStatusHistory(StorageService.getStatusHistory());
+    });
+    if (dbError) return { success: false, message: `Archived locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Member archived as Inactive.') };
   };
 
   /**
@@ -473,7 +673,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.deleteMember(memberId, true);
-    return { success: true, message: apiRes.message || 'Member deleted.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.deleteMember(memberId));
+    if (dbError) return { success: false, message: `Deleted locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Member deleted.') };
   };
 
   /**
@@ -509,6 +711,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     for (const mem of importedList) {
       GasApiService.saveMember(mem);
     }
+    await persistSupabase(() => SupabaseDataService.saveMembers(currentList));
 
     StorageService.addLog(
       operatorName,
@@ -555,7 +758,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveEvent(toSave);
-    return { success: true, message: apiRes.message || 'Event saved.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.saveEvents([toSave]));
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Event saved.') };
   };
 
   /**
@@ -582,7 +787,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.deleteEvent(eventId);
-    return { success: true, message: apiRes.message || 'Event deleted.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.deleteEvent(eventId));
+    if (dbError) return { success: false, message: `Deleted locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Event deleted.') };
   };
 
   /**
@@ -619,7 +826,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveSchedule(toSave);
-    return { success: true, message: apiRes.message || 'Schedule saved.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.saveSchedules([toSave]));
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Schedule saved.') };
   };
 
   /**
@@ -641,7 +850,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.deleteSchedule(scheduleId);
-    return { success: true, message: apiRes.message || 'Schedule deleted.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.deleteSchedule(scheduleId));
+    if (dbError) return { success: false, message: `Deleted locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Schedule deleted.') };
   };
 
   /**
@@ -659,6 +870,11 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       for (const m of res.updatedMembers) {
         GasApiService.saveMember(m);
       }
+      const dbError = await persistSupabase(async () => {
+        await SupabaseDataService.saveAttendance(records);
+        await SupabaseDataService.saveMembers(res.updatedMembers);
+      });
+      if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
     }
     return { success: res.success, message: res.message };
   };
@@ -681,7 +897,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveSettings(newSettings);
-    return { success: true, message: apiRes.message || 'Settings saved.' };
+    const dbError = await persistSupabase(async () => {
+      await SupabaseDataService.saveAppSetting('system_settings', newSettings);
+      await SupabaseDataService.saveMembers(recomputedMembers);
+    });
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Settings saved.') };
   };
 
   /**
@@ -697,7 +918,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveReportSnapshot(snapshot);
-    return { success: true, message: apiRes.message || 'Report snapshot preserved in official records.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.saveReports([snapshot]));
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Report snapshot preserved in official records.') };
   };
 
   /**
@@ -734,7 +957,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveAnnouncement(toSave);
-    return { success: true, message: apiRes.message || 'Announcement saved successfully.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.saveAnnouncements([toSave]));
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Announcement saved successfully.') };
   };
 
   const deleteAnnouncement = async (announcementId: string): Promise<{ success: boolean; message: string }> => {
@@ -753,7 +978,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.deleteAnnouncement(announcementId);
-    return { success: true, message: apiRes.message || 'Announcement deleted.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.deleteAnnouncement(announcementId));
+    if (dbError) return { success: false, message: `Deleted locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Announcement deleted.') };
   };
 
   /**
@@ -771,7 +998,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setLogs(StorageService.getLogs());
 
     const apiRes = await GasApiService.saveLandingPageConfig(toSave);
-    return { success: true, message: apiRes.message || 'Landing page configuration saved.' };
+    const dbError = await persistSupabase(() => SupabaseDataService.saveAppSetting('landing_page_config', toSave));
+    if (dbError) return { success: false, message: `Saved locally, but Supabase sync failed: ${dbError}` };
+    return { success: true, message: getPersistenceMessage(apiRes, 'Landing page configuration saved.') };
   };
 
   /**
@@ -847,6 +1076,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (updatedMem) {
         GasApiService.saveMember(updatedMem);
       }
+      const dbError = await persistSupabase(async () => {
+        await SupabaseDataService.saveAttendance([newRecord]);
+        if (updatedMem) await SupabaseDataService.saveMembers([updatedMem]);
+      });
+      if (dbError) {
+        return {
+          success: false,
+          message: `Attendance saved locally, but Supabase sync failed: ${dbError}`,
+          record: newRecord,
+        };
+      }
 
       return {
         success: true,
@@ -876,15 +1116,6 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setLogs(StorageService.getLogs());
     }
     return success;
-  };
-
-  const resetToOfficialMembers = () => {
-    StorageService.saveMembers(INITIAL_MEMBERS);
-    setMembers(INITIAL_MEMBERS);
-    StorageService.saveAttendance(INITIAL_ATTENDANCE_RECORDS);
-    setAttendance(INITIAL_ATTENDANCE_RECORDS);
-    StorageService.addLog(operatorName, 'INITIALIZE', 'MEMBERS', 'Reset local database to official 66 youth members roster.');
-    setLogs(StorageService.getLogs());
   };
 
   return (
@@ -928,7 +1159,6 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         saveReportSnapshot,
         exportBackup,
         restoreBackup,
-        resetToOfficialMembers,
       }}
     >
       {children}

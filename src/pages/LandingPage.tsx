@@ -33,8 +33,8 @@ import { COMMITTEE_METADATA } from '../data/sampleCommittees';
 import {
   RegularGatheringSlot,
   getAutomatedGatheringSlot,
+  getUpcomingRegularGatheringDate,
   resolveOrCreateSlotEventSchedule,
-  formatDateYYYYMMDD,
 } from '../data/lokalSchedule';
 
 // Modals
@@ -47,6 +47,7 @@ import { AnnouncementBoard } from '../components/landing/AnnouncementBoard';
 import { EventCheckInModal } from '../components/landing/EventCheckInModal';
 import { AdminLoginModal } from '../components/landing/AdminLoginModal';
 import { GatheringSelectorModal } from '../components/landing/GatheringSelectorModal';
+import { isSupabaseRequired, supabase } from '../services/supabaseClient';
 
 interface LandingPageProps {
   onEnterAdmin: () => void;
@@ -88,6 +89,24 @@ interface YouthCommitteeCard {
   image: string;
   members: CommitteeRosterMember[];
 }
+
+const ONE_TIME_EVENT_GATHERING_TITLES = new Set([
+  'Combined Prayer Meeting & Worship Service',
+  'Mass Blood Donation',
+  'MCGI Grand Fiesta ng Dios: Brethren Day',
+  'Mass Baptism',
+  '3rd Quarter Special Thanksgiving of God’s People',
+  'Opening of Mass Indoctrination',
+  'MCGI Livelihood Project (Batch 17)',
+]);
+
+const HIDDEN_LANDING_ANNOUNCEMENT_TITLES = new Set([
+  'District Youth Thanksgiving & Praise Gathering',
+  'MCGI Worldwide Events — October 2026',
+  'Youth General Assembly & Sports Fellowship',
+  'Weekly Congregational Prayer Meeting Schedules',
+  'MCGI Cares: Youth Community Outreach & Assistance',
+]);
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   const {
@@ -206,6 +225,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
   // Remember identified member across sessions on the device
   const [activeMember, setActiveMember] = useState<Member | null>(() => {
+    if (isSupabaseRequired) {
+      localStorage.removeItem('mcgi_portal_member');
+      return null;
+    }
     const saved = localStorage.getItem('mcgi_portal_member');
     if (saved) {
       try {
@@ -266,6 +289,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   );
   const [isManualOverride, setIsManualOverride] = useState<boolean>(false);
   const [isGatheringCardMinimized, setIsGatheringCardMinimized] = useState(false);
+  const [hasDetachedGatheringCard, setHasDetachedGatheringCard] = useState(false);
   const [floatingSearchPosition, setFloatingSearchPosition] = useState({ x: 0, y: 0 });
   const [isGatheringSelectorOpen, setIsGatheringSelectorOpen] = useState<boolean>(false);
   const floatingSearchInitializedRef = useRef(false);
@@ -277,11 +301,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
       setFloatingSearchPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
       floatingSearchInitializedRef.current = true;
     }
+    setHasDetachedGatheringCard(true);
     setIsGatheringCardMinimized(true);
+  };
+
+  const handleRestoreGatheringCard = () => {
+    const panelWidth = Math.min(460, window.innerWidth - 32);
+    const panelHeight = Math.min(460, window.innerHeight - 32);
+    setFloatingSearchPosition((position) => ({
+      x: Math.max(Math.min(panelWidth / 2 + 12, window.innerWidth / 2), Math.min(position.x, window.innerWidth - panelWidth / 2 - 12)),
+      y: Math.max(Math.min(panelHeight / 2 + 12, window.innerHeight / 2), Math.min(position.y, window.innerHeight - panelHeight / 2 - 12)),
+    }));
+    setIsGatheringCardMinimized(false);
   };
 
   const handleFloatingSearchPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    if (!isGatheringCardMinimized && (event.target as HTMLElement).closest('button, input, textarea, select, a')) return;
     floatingSearchDragRef.current = {
       pointerId: event.pointerId,
       startClientX: event.clientX,
@@ -306,11 +342,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     }
     event.preventDefault();
 
-    const margin = 44;
-    const minX = Math.min(margin, window.innerWidth / 2);
-    const maxX = Math.max(window.innerWidth - margin, window.innerWidth / 2);
-    const minY = Math.min(margin, window.innerHeight / 2);
-    const maxY = Math.max(window.innerHeight - margin, window.innerHeight / 2);
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const minX = Math.min(bounds.width / 2 + 12, window.innerWidth / 2);
+    const maxX = Math.max(window.innerWidth - bounds.width / 2 - 12, window.innerWidth / 2);
+    const minY = Math.min(bounds.height / 2 + 12, window.innerHeight / 2);
+    const maxY = Math.max(window.innerHeight - bounds.height / 2 - 12, window.innerHeight / 2);
     setFloatingSearchPosition({
       x: Math.max(minX, Math.min(maxX, drag.startX + deltaX)),
       y: Math.max(minY, Math.min(maxY, drag.startY + deltaY)),
@@ -376,6 +412,56 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   } | null>(null);
   const [attendErrorToast, setAttendErrorToast] = useState<string | null>(null);
 
+  const handleSecureSupabaseCheckIn = async (memberId: string, birthday: string) => {
+    if (!supabase) {
+      return { success: false, message: 'Secure check-in is not configured. Please ask an officer for help.' };
+    }
+
+    const selectedSlotId = checkInEvent && checkInSchedule
+      ? `EVENT:${checkInEvent.eventId}:${checkInSchedule.scheduleId}`
+      : selectedGatheringSlot.slotId;
+    const checkInDate = checkInSchedule?.date || selectedGatheringDate;
+    const { data, error } = await supabase.rpc('public_member_check_in', {
+      p_member_id: memberId.trim(),
+      p_birthday: birthday,
+      p_slot_id: selectedSlotId,
+      p_event_date: checkInDate,
+    });
+
+    if (error) {
+      return { success: false, message: 'Check-in is unavailable right now. Please ask an officer for help.' };
+    }
+
+    const result = data as {
+      success: boolean;
+      duplicate?: boolean;
+      message?: string;
+      memberName?: string;
+      eventName?: string;
+      eventDate?: string;
+      scheduleLabel?: string;
+    };
+
+    if (!result.success) return { success: false, message: result.message || 'Could not verify your details.' };
+
+    const memberName = result.memberName || 'Member';
+    const eventName = result.eventName || checkInEvent?.eventName || selectedGatheringSlot.eventName;
+    setAttendSuccessToast({
+      memberName,
+      gatheringName: eventName,
+      time: result.scheduleLabel || checkInSchedule?.scheduleLabel || selectedGatheringSlot.time,
+      date: result.eventDate || checkInDate,
+    });
+
+    return {
+      success: true,
+      duplicate: result.duplicate,
+      message: result.duplicate
+        ? `Attendance for ${eventName} is already recorded.`
+        : `Attendance recorded for ${memberName}. Thank you!`,
+    };
+  };
+
   // Handler for 1-Click Instant Attendance
   const handleQuickAttend = async (member: Member) => {
     const memId = member.memberId || (member as any).memberID;
@@ -435,6 +521,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
   // Hero matched members for live pop-up
   const heroMatchedMembers = useMemo(() => {
+    if (isSupabaseRequired) return [];
     const q = heroSearchText.trim().toLowerCase();
     if (!q) return [];
     return members
@@ -455,18 +542,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   };
 
   const handleSelectRegularSlotForCheckIn = (slot: RegularGatheringSlot) => {
-    const now = new Date();
-    const [hours, minutes] = slot.time24.split(':').map(Number);
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    let daysUntilSlot = (slot.dayOfWeek - now.getDay() + 7) % 7;
-
-    if (daysUntilSlot === 0 && hours * 60 + minutes <= currentMinutes) {
-      daysUntilSlot = 7;
-    }
-
-    const scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSlot);
     setSelectedGatheringSlot(slot);
-    setSelectedGatheringDate(formatDateYYYYMMDD(scheduledDate));
+    setSelectedGatheringDate(getUpcomingRegularGatheringDate(slot));
     setIsManualOverride(true);
     setInitialSearchQuery(activeMember?.fullName || '');
     setIsSearchOpen(true);
@@ -520,7 +597,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
   // Sacred Gatherings (dynamic from config or defaults)
   const activeGatherings: GatheringItem[] = React.useMemo(() => {
     const configuredGatherings = landingPageConfig?.gatherings?.filter(
-      (gathering) => gathering.title !== 'Youth Christian Fellowship'
+      (gathering) =>
+        gathering.title !== 'Youth Christian Fellowship' &&
+        !ONE_TIME_EVENT_GATHERING_TITLES.has(gathering.title.trim())
     );
     if (configuredGatherings?.length) {
       return configuredGatherings;
@@ -819,7 +898,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             </div>
 
             {/* Center Content */}
-            {!isGatheringCardMinimized && (
+            {!hasDetachedGatheringCard && (
             <div
               className={`relative z-10 mx-auto max-w-[460px] w-full my-auto rounded-2xl bg-charcoal-950/10 backdrop-blur-md border border-white/50 p-4 sm:p-5 md:p-6 shadow-2xl shadow-black/20 cursor-grab ${isHeroCardDragging ? 'cursor-grabbing' : ''}`}
               role="group"
@@ -916,7 +995,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                       id="hero-member-search"
                       type="text"
                       aria-label="Search by member name or ID"
-                      value={heroSearchText}
+                      value={isSupabaseRequired ? '' : heroSearchText}
+                      readOnly={isSupabaseRequired}
+                      onClick={() => {
+                        if (isSupabaseRequired) setIsSearchOpen(true);
+                      }}
                       onChange={(e) => setHeroSearchText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
@@ -924,7 +1007,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                           handleOpenSearchWithQuery(heroSearchText.trim());
                         }
                       }}
-                      placeholder="Enter your name or Member ID..."
+                      placeholder={isSupabaseRequired ? 'Tap to securely check in with Member ID' : 'Enter your name or Member ID...'}
                       className="search-attention-input w-full pl-11 pr-10 py-3.5 text-sm font-medium bg-charcoal-950/35 backdrop-blur-md border border-white/45 rounded-xl text-white placeholder:text-white/85 focus:outline-none focus:ring-2 focus:ring-bronze-300 focus:border-bronze-300/70 focus:bg-charcoal-950/55 transition shadow-inner"
                     />
                     <Search className="w-4 h-4 text-white/85 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -941,7 +1024,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                 </div>
 
                 {/* Instant Live Matching Cards Pop-Up */}
-                {heroSearchText.trim().length > 0 && (
+                {!isSupabaseRequired && heroSearchText.trim().length > 0 && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden divide-y divide-stone-100 z-40 text-stone-900 animate-in fade-in slide-in-from-top-2 duration-150 max-h-80 overflow-y-auto">
                     <div className="px-4 py-2.5 bg-amber-50/90 border-b border-amber-200/60 flex items-center justify-between text-xs sticky top-0 backdrop-blur-md z-10">
                       <span className="font-bold text-amber-900 flex items-center gap-1.5">
@@ -1075,11 +1158,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
 
       {landingPageConfig?.showAnnouncements !== false && (
         <AnnouncementBoard
-          announcements={announcements}
+          announcements={announcements.filter(
+            (announcement) => !HIDDEN_LANDING_ANNOUNCEMENT_TITLES.has(announcement.title.trim())
+          )}
           onSelectAnnouncement={setSelectedAnnouncement}
           title={landingPageConfig?.announcementsTitle || 'Digital Announcement Board.'}
           subtitle={landingPageConfig?.announcementsSubtitle || 'Stay in the loop with pastoral reminders, upcoming youth activities, service guidelines, and local assemblies.'}
-          limit={landingPageConfig?.announcementsLimit || 4}
+          limit={Math.max(landingPageConfig?.announcementsLimit ?? 9, 9)}
           featuredAnnouncementId={landingPageConfig?.featuredAnnouncementId}
         />
       )}
@@ -1441,7 +1526,78 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         </div>
       </footer>
 
-      {isGatheringCardMinimized && (
+      {hasDetachedGatheringCard && !isGatheringCardMinimized && (
+        <div
+          className="fixed z-40 w-[min(460px,calc(100vw-2rem))] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-white/35 bg-charcoal-950/95 p-5 text-white shadow-2xl shadow-black/35 backdrop-blur-md cursor-grab active:cursor-grabbing"
+          style={{ left: floatingSearchPosition.x, top: floatingSearchPosition.y, transform: 'translate(-50%, -50%)' }}
+          onPointerDown={handleFloatingSearchPointerDown}
+          onPointerMove={handleFloatingSearchPointerMove}
+          onPointerUp={finishFloatingSearchPointer}
+          onPointerCancel={finishFloatingSearchPointer}
+          onClickCapture={handleFloatingSearchClickCapture}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-white/75">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                {isManualOverride ? 'Selected Gathering' : 'Today’s Gathering (Automated)'}
+              </p>
+              <h2 className="mt-1 font-serif text-2xl font-semibold leading-tight">
+                {selectedGatheringSlot.eventName}
+              </h2>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsGatheringSelectorOpen(true)}
+                className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/30 bg-white/10 px-3 text-xs font-semibold transition hover:bg-white/20"
+                title="Change gathering"
+                aria-label="Change gathering"
+              >
+                <Calendar className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Change</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsGatheringCardMinimized(true)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/30 bg-white/10 transition hover:bg-white/20"
+                title="Minimize gathering card"
+                aria-label="Minimize gathering card"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 border-t border-white/25 pt-4 text-xs sm:grid-cols-2">
+            <div>
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-white/70">Schedule &amp; Time</span>
+              <span className="mt-1 flex items-center gap-1.5 text-sm font-semibold">
+                <Clock className="h-3.5 w-3.5 text-white/80" />
+                {selectedGatheringSlot.dayFullName} · {selectedGatheringSlot.time}
+              </span>
+              {selectedGatheringSlot.hasZoom && <span className="mt-1 block text-[10px] font-semibold text-white/80">w/ Zoom link</span>}
+            </div>
+            <div>
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-white/70">MPRO Incharge</span>
+              <span className="mt-1 block font-semibold leading-relaxed">{selectedGatheringSlot.mproIncharge}</span>
+            </div>
+            <div className="sm:col-span-2">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-white/70">Officers Assigned</span>
+              <span className="mt-1 block font-semibold leading-relaxed">{selectedGatheringSlot.officersAssigned}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleOpenSearchWithQuery('')}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-4 py-3 text-sm font-semibold transition hover:bg-white/20"
+          >
+            <Search className="h-4 w-4" />
+            Search members
+          </button>
+        </div>
+      )}
+
+      {hasDetachedGatheringCard && isGatheringCardMinimized && (
         <div
           className="fixed z-40 h-16 w-16 cursor-grab active:cursor-grabbing"
           style={{ left: floatingSearchPosition.x, top: floatingSearchPosition.y, transform: 'translate(-50%, -50%)', touchAction: 'none' }}
@@ -1462,7 +1618,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
           </button>
           <button
             type="button"
-            onClick={() => setIsGatheringCardMinimized(false)}
+            onClick={handleRestoreGatheringCard}
             className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-bronze-500 text-charcoal-950 shadow-md transition hover:bg-bronze-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bronze-300"
             title="Restore gathering card"
             aria-label="Restore gathering card"
@@ -1477,12 +1633,19 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
       <MemberSearchModal
         isOpen={isSearchOpen}
         initialQuery={initialSearchQuery}
-        members={members}
-        onClose={() => setIsSearchOpen(false)}
+        members={isSupabaseRequired ? [] : members}
+        onClose={() => {
+          setIsSearchOpen(false);
+          setCheckInEvent(null);
+          setCheckInSchedule(null);
+        }}
         onSelectMember={handleSelectMember}
-        activeGatheringTitle={`${selectedGatheringSlot.eventName} (${selectedGatheringSlot.time})`}
+        activeGatheringTitle={checkInEvent && checkInSchedule
+          ? `${checkInEvent.eventName} (${checkInSchedule.scheduleLabel})`
+          : `${selectedGatheringSlot.eventName} (${selectedGatheringSlot.time})`}
         onQuickAttend={handleQuickAttend}
         isAlreadyAttended={isMemberAttendedForActiveSlot}
+        onSecureCheckIn={handleSecureSupabaseCheckIn}
       />
 
       {/* Choice of Gathering Selector Modal */}
@@ -1493,14 +1656,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
         onSelectSlot={(slot, isManual) => {
           setSelectedGatheringSlot(slot);
           setIsManualOverride(isManual);
-          if (slot.dayOfWeek === new Date().getDay()) {
-            setSelectedGatheringDate(formatDateYYYYMMDD(new Date()));
-          } else {
-            const today = new Date();
-            const diff = (slot.dayOfWeek - today.getDay() + 7) % 7 || 7;
-            const nextDate = new Date(today.getTime() + diff * 24 * 60 * 60 * 1000);
-            setSelectedGatheringDate(formatDateYYYYMMDD(nextDate));
-          }
+          setSelectedGatheringDate(getUpcomingRegularGatheringDate(slot));
         }}
         isManualOverride={isManualOverride}
       />

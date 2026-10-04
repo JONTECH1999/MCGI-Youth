@@ -35,15 +35,24 @@ This folder contains the complete Google Apps Script backend that allows the MCG
 3. Fill in the fields:
    - **Description**: `MCGI Youth Web App API`
    - **Execute as**: `Me (<your-email@gmail.com>)`
-   - **Who has access**: **`Anyone`** *(Crucial: allows your web application to connect without exposing private API keys or service account files)*.
+   - **Who has access**: **`Anyone`**. The endpoint URL is public, but all data reads and writes now require a valid Supabase Auth access token and an active `staff_profiles` row. Only the health-check ping is unauthenticated.
 4. Click **Deploy**.
 5. Copy the **Web app URL** (it ends with `/exec`).
+
+### Required Supabase Authorization Properties
+
+Before using the Web App URL with real member data, open **Apps Script → Project Settings → Script Properties** and add:
+
+- `SUPABASE_URL`: your Supabase project URL, such as `https://your-project-id.supabase.co`.
+- `SUPABASE_PUBLISHABLE_KEY`: the project's publishable key (the legacy anon public key is also accepted).
+
+The script validates each access token with Supabase Auth, then checks that the user has an active staff profile. Never add a service-role key here or in browser code. After changing `Code.gs`, use **Deploy → Manage deployments → Edit → New version → Deploy** so the live `/exec` deployment receives the authorization check.
 
 ### Step 6: Connect to React App
 1. Open the MCGI Youth Web Application.
 2. Navigate to **Settings** → **Google Sheets**.
 3. Paste the Web App URL into the **Google Apps Script Web App URL** input.
-4. Click **Test Connection** & **Sync Data**.
+4. Sign in as an officer, click **Test Connection**, then use **Push All App Data** to create an authenticated secondary copy. Pulling from Sheets is intentionally disabled when Supabase is the primary database.
 
 ---
 

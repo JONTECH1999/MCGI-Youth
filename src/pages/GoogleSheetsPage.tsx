@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { GasApiService } from '../services/gasApi';
+import { isSupabaseRequired } from '../services/supabaseClient';
 
 export const GoogleSheetsPage: React.FC = () => {
   const {
@@ -25,7 +26,6 @@ export const GoogleSheetsPage: React.FC = () => {
     syncFromGoogleSheets,
     initGoogleSheets,
     pushAllToGoogleSheets,
-    resetToOfficialMembers,
     members,
     events,
     attendance,
@@ -154,9 +154,13 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-xl border border-slate-200 shadow-xs">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Google Sheets Official Database Integration</h2>
+          <h2 className="text-base font-bold text-slate-900">
+            {isSupabaseRequired ? 'Google Sheets Secondary Copy' : 'Google Sheets Connection'}
+          </h2>
           <p className="text-xs text-slate-500">
-            Google Sheets is the primary database and single source of truth. Manage Web App connection and sync below.
+            {isSupabaseRequired
+              ? 'Supabase is the primary database. Google Sheets is an authenticated secondary copy.'
+              : 'Configure Supabase Auth before connecting Google Sheets for real member data.'}
           </p>
         </div>
 
@@ -277,23 +281,10 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm('Reset web app roster to the 66 official youth members (28 Sisters, 38 Brothers)?')) {
-                      resetToOfficialMembers();
-                    }
-                  }}
-                  className="px-3 py-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-[11px] font-bold text-slate-700 shadow-2xs transition-colors"
-                  title="Reloads all 66 official youth members into this web app"
-                >
-                  Reload 66 Members
-                </button>
-
-                <button
-                  type="button"
                   onClick={handlePushAll}
                   disabled={isPushingAll || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
                   className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-xs disabled:opacity-50 transition-colors"
-                  title="Overwrites all members and attendance in Google Sheets with the current 66 members"
+                  title="Replaces Google Sheets rows with the current Supabase-backed app data"
                 >
                   <UploadCloud className={`h-3.5 w-3.5 ${isPushingAll ? 'animate-spin' : ''}`} />
                   <span>{isPushingAll ? 'Uploading...' : 'Replace Google Sheet Data'}</span>
@@ -348,12 +339,12 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
               <button
                 type="button"
                 onClick={handleSyncFromSheets}
-                disabled={isSyncing || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
+                disabled={isSupabaseRequired || isSyncing || (!GasApiService.isConfigured() && !appsScriptUrlInput.trim().includes('/exec'))}
                 className="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                title="Pulls and updates members and records from Google Sheets down into this web app"
+                title={isSupabaseRequired ? 'Disabled: Supabase is the source of truth' : 'Pulls and updates records from Google Sheets'}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? 'Downloading...' : '4. Sync from Sheets'}</span>
+                <span>{isSupabaseRequired ? '4. Pull disabled (Supabase primary)' : isSyncing ? 'Downloading...' : '4. Sync from Sheets'}</span>
               </button>
             </div>
           </div>
@@ -482,7 +473,9 @@ function doGet(e) { /* Full Code.gs file available in workspace */ }`;
             </div>
             <ul className="list-disc pl-4 text-[11px] space-y-1.5 text-slate-300">
               <li>
-                <strong>"Sync from Sheets" downloads FROM your sheet:</strong> If your sheet is currently blank, clicking Sync will not add data to Google Sheets. Use <strong>"3. Push All App Data"</strong> to upload all members and attendance to your sheet!
+                {isSupabaseRequired
+                  ? <><strong>Supabase is the source of truth.</strong> Pulling from Sheets is disabled to protect newer database data. Use <strong>"3. Push All App Data"</strong> for an authenticated secondary copy.</>
+                  : <><strong>"Sync from Sheets" downloads from your sheet.</strong> If it is blank, use <strong>"3. Push All App Data"</strong> to upload the app's data.</>}
               </li>
               <li>
                 <strong>"Format 15 Sheets" only creates table headers:</strong> It generates the 15 tabs and official MCGI blue columns. You still need to click <strong>"3. Push All App Data"</strong> to populate the rows.

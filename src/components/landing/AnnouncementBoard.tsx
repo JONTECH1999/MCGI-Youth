@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Bell, Calendar, MapPin, ArrowRight, Sparkles, Filter, Bookmark, Radio } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Bell, Calendar, MapPin, ArrowRight, Sparkles, Bookmark, Radio, History } from 'lucide-react';
 import { Announcement } from '../../types/announcement';
 
 interface AnnouncementBoardProps {
@@ -11,6 +11,41 @@ interface AnnouncementBoardProps {
   featuredAnnouncementId?: string;
 }
 
+interface AnnouncementEventWindow {
+  startAt: number;
+  endAt: number;
+}
+
+const getAnnouncementEventWindow = (eventDate?: string): AnnouncementEventWindow | null => {
+  if (!eventDate) return null;
+
+  const dateMatch = eventDate.match(/^([A-Za-z]+)\s+(\d{1,2})(.*?),?\s*(\d{4})/i);
+  if (!dateMatch) return null;
+
+  const year = Number(dateMatch[4]);
+  const startDay = Number(dateMatch[2]);
+  const startMonth = new Date(`${dateMatch[1]} 1, ${year}`).getMonth();
+  if (Number.isNaN(startMonth)) return null;
+
+  const rangeDays = dateMatch[3].match(/\d{1,2}/g);
+  const endDay = rangeDays ? Number(rangeDays[rangeDays.length - 1]) : startDay;
+  const endMonthName = dateMatch[3].match(/[-–—]\s*([A-Za-z]+)\s+\d{1,2}/)?.[1];
+  const endMonth = endMonthName
+    ? new Date(`${endMonthName} 1, ${year}`).getMonth()
+    : startMonth;
+  const timeMatch = eventDate.slice(dateMatch[0].length).match(/(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/i);
+  let hour = timeMatch ? Number(timeMatch[1]) % 12 : 0;
+  const minute = timeMatch?.[2] ? Number(timeMatch[2]) : 0;
+  if (timeMatch?.[3].toLowerCase().startsWith('p')) hour += 12;
+
+  const startAt = Date.UTC(year, startMonth, startDay, hour - 8, minute);
+  const endAt = timeMatch
+    ? Date.UTC(year, endMonth, endDay, hour - 8, minute) + 59_999
+    : Date.UTC(year, endMonth, endDay, 15, 59, 59, 999);
+
+  return { startAt, endAt };
+};
+
 export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   announcements,
   onSelectAnnouncement,
@@ -19,19 +54,42 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
   limit,
   featuredAnnouncementId,
 }) => {
-  const [filter, setFilter] = useState<'All' | 'Featured'>('All');
+  const [filter, setFilter] = useState<'All' | 'Featured' | 'Past'>('All');
+  const [now, setNow] = useState(() => Date.now());
 
-  const published = announcements
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const classifiedAnnouncements = announcements
     .filter((a) => a.status === 'Published')
+    .map((announcement) => ({
+      announcement,
+      eventWindow: getAnnouncementEventWindow(announcement.eventDate),
+    }));
+  const pastAnnouncements = classifiedAnnouncements
+    .filter(({ eventWindow }) => eventWindow && eventWindow.endAt < now)
+    .sort((a, b) => (b.eventWindow?.endAt ?? 0) - (a.eventWindow?.endAt ?? 0))
+    .map(({ announcement }) => announcement);
+  const upcomingAnnouncements = classifiedAnnouncements
+    .filter(({ eventWindow }) => !eventWindow || eventWindow.endAt >= now)
     .sort((a, b) => {
-      if (a.announcementId === featuredAnnouncementId) return -1;
-      if (b.announcementId === featuredAnnouncementId) return 1;
-      if (a.featured && !b.featured) return -1;
-      if (!a.featured && b.featured) return 1;
-      return new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime();
+      if (a.eventWindow && b.eventWindow) return a.eventWindow.startAt - b.eventWindow.startAt;
+      if (a.eventWindow) return -1;
+      if (b.eventWindow) return 1;
+      if (a.announcement.announcementId === featuredAnnouncementId) return -1;
+      if (b.announcement.announcementId === featuredAnnouncementId) return 1;
+      if (a.announcement.featured && !b.announcement.featured) return -1;
+      if (!a.announcement.featured && b.announcement.featured) return 1;
+      return new Date(b.announcement.publishDate).getTime() - new Date(a.announcement.publishDate).getTime();
     })
-    .slice(0, limit ?? announcements.length);
-  const displayed = filter === 'Featured' ? published.filter((a) => a.featured) : published;
+    .map(({ announcement }) => announcement);
+  const featuredAnnouncements = upcomingAnnouncements.filter((announcement) => announcement.featured);
+  const displayLimit = limit ?? announcements.length;
+  const displayed = filter === 'Past'
+    ? pastAnnouncements
+    : (filter === 'Featured' ? featuredAnnouncements : upcomingAnnouncements).slice(0, displayLimit);
 
   // Placeholder fallback image for announcements without image
   const defaultPlaceholder =
@@ -64,7 +122,7 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
                 : 'text-stone-700 hover:text-stone-950 hover:bg-stone-300/50'
             }`}
           >
-            All Bulletins ({published.length})
+            All Bulletins ({upcomingAnnouncements.length})
           </button>
           <button
             onClick={() => setFilter('Featured')}
@@ -75,7 +133,18 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Featured ({published.filter((a) => a.featured).length})</span>
+            <span>Featured ({featuredAnnouncements.length})</span>
+          </button>
+          <button
+            onClick={() => setFilter('Past')}
+            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer flex items-center space-x-1.5 ${
+              filter === 'Past'
+                ? 'bg-amber-800 text-white shadow-md shadow-amber-900/20'
+                : 'text-stone-700 hover:text-stone-950 hover:bg-stone-300/50'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Past Events ({pastAnnouncements.length})</span>
           </button>
         </div>
       </div>
@@ -84,8 +153,12 @@ export const AnnouncementBoard: React.FC<AnnouncementBoardProps> = ({
       {displayed.length === 0 ? (
         <div className="text-center py-20 bg-white/70 rounded-3xl border border-dashed border-stone-300 p-8">
           <Bell className="w-12 h-12 text-stone-400 mx-auto mb-3 animate-float-gentle" />
-          <h4 className="text-base font-bold text-stone-800">No announcements in this category</h4>
-          <p className="text-xs text-stone-500 mt-1">Check back later or view all circulars above.</p>
+          <h4 className="text-base font-bold text-stone-800">
+            {filter === 'Past' ? 'No past events yet' : filter === 'Featured' ? 'No featured upcoming events' : 'No upcoming announcements'}
+          </h4>
+          <p className="text-xs text-stone-500 mt-1">
+            {filter === 'Past' ? 'Completed events will appear here.' : 'Check back later or view another board category.'}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
