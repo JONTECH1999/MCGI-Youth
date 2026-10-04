@@ -25,6 +25,9 @@ import { MemberImportModal } from './MemberImportModal';
 import { OFFICIAL_COMMITTEES } from '../../data/sampleCommittees';
 import { useAuth } from '../../context/AuthContext';
 
+const isDeletedMember = (member: Member): member is DeletedMember =>
+  'deletedAt' in member && 'deletedBy' in member;
+
 interface MemberTableProps {
   members: Member[];
   deletedMembers: DeletedMember[];
@@ -357,7 +360,7 @@ export const MemberTable: React.FC<MemberTableProps> = ({
                       <div className="text-[11px] text-slate-500">
                         {member.contactNumber === '#ERROR!' ? 'Contact unavailable' : member.contactNumber}
                       </div>
-                      {showTrash && (
+                      {showTrash && isDeletedMember(member) && (
                         <div className="text-[10px] text-amber-700">
                           Deleted {member.deletedAt ? new Date(member.deletedAt).toLocaleString() : 'date unavailable'}
                           {member.deletedBy ? ` by ${member.deletedBy}` : ''}

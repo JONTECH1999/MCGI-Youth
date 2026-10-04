@@ -2,7 +2,7 @@ import { AttendanceEvent, EventSchedule, EventType } from '../types/event';
 
 export interface RegularGatheringSlot {
   slotId: string;
-  eventType: EventType | string;
+  eventType: EventType;
   eventName: string;
   dayOfWeek: number; // 0 = Sun, 1 = Mon, 2 = Tue, 3 = Wed, 4 = Thu, 5 = Fri, 6 = Sat
   dayName: 'Mon' | 'Wed' | 'Thurs' | 'Sat' | 'Sun' | string;
