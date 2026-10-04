@@ -21,6 +21,8 @@ import {
   Video,
   AlertCircle,
   Check,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { useAppData } from '../context/AppDataContext';
 import { Member } from '../types/member';
@@ -61,6 +63,15 @@ interface HeroCardDragState {
   width: number;
   height: number;
   bounds: DOMRect;
+  moved: boolean;
+}
+
+interface FloatingSearchDragState {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startX: number;
+  startY: number;
   moved: boolean;
 }
 
@@ -254,7 +265,76 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
     () => getAutomatedGatheringSlot().dateStr
   );
   const [isManualOverride, setIsManualOverride] = useState<boolean>(false);
+  const [isGatheringCardMinimized, setIsGatheringCardMinimized] = useState(false);
+  const [floatingSearchPosition, setFloatingSearchPosition] = useState({ x: 0, y: 0 });
   const [isGatheringSelectorOpen, setIsGatheringSelectorOpen] = useState<boolean>(false);
+  const floatingSearchInitializedRef = useRef(false);
+  const floatingSearchDragRef = useRef<FloatingSearchDragState | null>(null);
+  const suppressFloatingSearchClickRef = useRef(false);
+
+  const handleMinimizeGatheringCard = () => {
+    if (!floatingSearchInitializedRef.current) {
+      setFloatingSearchPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      floatingSearchInitializedRef.current = true;
+    }
+    setIsGatheringCardMinimized(true);
+  };
+
+  const handleFloatingSearchPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    floatingSearchDragRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startX: floatingSearchPosition.x,
+      startY: floatingSearchPosition.y,
+      moved: false,
+    };
+  };
+
+  const handleFloatingSearchPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = floatingSearchDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const deltaX = event.clientX - drag.startClientX;
+    const deltaY = event.clientY - drag.startClientY;
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < 5) return;
+
+    if (!drag.moved) {
+      drag.moved = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+
+    const margin = 44;
+    const minX = Math.min(margin, window.innerWidth / 2);
+    const maxX = Math.max(window.innerWidth - margin, window.innerWidth / 2);
+    const minY = Math.min(margin, window.innerHeight / 2);
+    const maxY = Math.max(window.innerHeight - margin, window.innerHeight / 2);
+    setFloatingSearchPosition({
+      x: Math.max(minX, Math.min(maxX, drag.startX + deltaX)),
+      y: Math.max(minY, Math.min(maxY, drag.startY + deltaY)),
+    });
+  };
+
+  const finishFloatingSearchPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = floatingSearchDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.moved) {
+      suppressFloatingSearchClickRef.current = true;
+      window.setTimeout(() => {
+        suppressFloatingSearchClickRef.current = false;
+      }, 0);
+    }
+    floatingSearchDragRef.current = null;
+  };
+
+  const handleFloatingSearchClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!suppressFloatingSearchClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressFloatingSearchClickRef.current = false;
+  };
 
   // Auto-update gathering slot if not manually overridden (polls every minute)
   useEffect(() => {
@@ -739,6 +819,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
             </div>
 
             {/* Center Content */}
+            {!isGatheringCardMinimized && (
             <div
               className={`relative z-10 mx-auto max-w-[460px] w-full my-auto rounded-2xl bg-charcoal-950/10 backdrop-blur-md border border-white/50 p-4 sm:p-5 md:p-6 shadow-2xl shadow-black/20 cursor-grab ${isHeroCardDragging ? 'cursor-grabbing' : ''}`}
               role="group"
@@ -765,15 +846,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
                     </h2>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsGatheringSelectorOpen(true)}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/30 text-white transition cursor-pointer self-start sm:self-auto shrink-0"
-                    title="Change gathering or select another schedule batch"
-                  >
-                    <Calendar className="w-3.5 h-3.5" />
-                    <span>Change Gathering</span>
-                  </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsGatheringSelectorOpen(true)}
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white/10 hover:bg-white/20 border border-white/30 text-white transition cursor-pointer"
+                      title="Change gathering or select another schedule batch"
+                    >
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>Change Gathering</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleMinimizeGatheringCard}
+                      className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-white bg-white/10 hover:bg-white/20 border border-white/30 transition cursor-pointer"
+                      title="Minimize gathering card"
+                      aria-label="Minimize gathering card"
+                    >
+                      <Minimize2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Day, Time & Duty Details */}
@@ -967,6 +1059,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
               </div>
 
             </div>
+            )}
 
             {/* Bottom Exploration Bar */}
             <div className="relative z-10 pt-5 mt-3 border-t border-white/15 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-cream-200/70 font-light gap-3">
@@ -1347,6 +1440,37 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterAdmin }) => {
           </div>
         </div>
       </footer>
+
+      {isGatheringCardMinimized && (
+        <div
+          className="fixed z-40 h-16 w-16 cursor-grab active:cursor-grabbing"
+          style={{ left: floatingSearchPosition.x, top: floatingSearchPosition.y, transform: 'translate(-50%, -50%)', touchAction: 'none' }}
+          onPointerDown={handleFloatingSearchPointerDown}
+          onPointerMove={handleFloatingSearchPointerMove}
+          onPointerUp={finishFloatingSearchPointer}
+          onPointerCancel={finishFloatingSearchPointer}
+          onClickCapture={handleFloatingSearchClickCapture}
+        >
+          <button
+            type="button"
+            onClick={() => handleOpenSearchWithQuery('')}
+            className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-white/80 bg-charcoal-950 text-white shadow-xl shadow-black/30 transition hover:scale-105 hover:bg-bronze-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-bronze-300"
+            title="Search members"
+            aria-label="Search members"
+          >
+            <Search className="h-6 w-6" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsGatheringCardMinimized(false)}
+            className="absolute -right-1 -top-1 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-bronze-500 text-charcoal-950 shadow-md transition hover:bg-bronze-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-bronze-300"
+            title="Restore gathering card"
+            aria-label="Restore gathering card"
+          >
+            <Maximize2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* MODALS */}
       {/* 1. Member Search Modal */}
